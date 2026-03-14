@@ -18,6 +18,8 @@ const QUESTIONS = [
   "Is there one small action available to you right now?",
 ];
 
+const API_URL = "https://thoughtclarity-api.onrender.com/clarity";
+
 export default function HomeScreen() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<string[]>(Array(QUESTIONS.length).fill(""));
@@ -62,7 +64,7 @@ export default function HomeScreen() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      const response = await fetch("http://localhost:3001/clarity", {
+      const response = await fetch(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

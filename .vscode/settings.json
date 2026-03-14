@@ -1,7 +1,20 @@
 {
-  "editor.codeActionsOnSave": {
-    "source.fixAll": "explicit",
-    "source.organizeImports": "explicit",
-    "source.sortMembers": "explicit"
+  "files.watcherExclude": {
+    "**/.expo/**": true,
+    "**/node_modules/**": true,
+    "**/server/node_modules/**": true,
+    "**/.git/**": true,
+    "**/web/cache/**": true
+  },
+  "search.exclude": {
+    "**/.expo": true,
+    "**/node_modules": true,
+    "**/server/node_modules": true,
+    "**/web/cache": true
+  },
+  "files.exclude": {
+    "**/.expo": true,
+    "**/node_modules": true,
+    "**/server/node_modules": true
   }
 }

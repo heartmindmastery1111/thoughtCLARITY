@@ -4,6 +4,7 @@ const cors = require("cors");
 const OpenAI = require("openai");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -14,6 +15,12 @@ const openai = new OpenAI({
 app.post("/clarity", async (req, res) => {
   try {
     const { answers } = req.body;
+
+    if (!Array.isArray(answers) || answers.length === 0) {
+      return res.status(400).json({
+        error: "Answers are required and must be a non-empty array.",
+      });
+    }
 
     const prompt = `
 You are thoughtCLARITY.
@@ -44,7 +51,6 @@ Return plain text only in exactly this structure:
 REFLECTION
 - Briefly summarize what feels heavy and what the user seems to be carrying.
 
-FACT
 FACT
 - List only externally verifiable conditions.
 - Do NOT include emotions, sensations, or interpretations here.
@@ -85,16 +91,26 @@ Rules:
 `;
 
     const completion = await openai.chat.completions.create({
-  model: "gpt-4.1-mini",
-  temperature: 0.4,
-  messages: [{ role: "user", content: prompt }],
-});
+      model: "gpt-4.1-mini",
+      temperature: 0.4,
+      messages: [{ role: "user", content: prompt }],
+    });
 
-    res.json({ result: completion.choices[0].message.content });
+    const result = completion.choices?.[0]?.message?.content?.trim();
+
+    if (!result) {
+      return res.status(500).json({
+        error: "No clarity response returned from OpenAI.",
+      });
+    }
+
+    res.json({ result });
   } catch (error) {
-  console.error("FULL ERROR:", error);
-  res.status(500).json({ error: error.message });
-}
+    console.error("FULL ERROR:", error);
+    res.status(500).json({
+      error: error?.message || "Something went wrong while generating clarity.",
+    });
+  }
 });
 
 app.listen(3001, () => {
