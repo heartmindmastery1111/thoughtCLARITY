@@ -14,42 +14,51 @@ const STEPS = [
     type: "question",
     label: "Current Question",
     text: "What feels most heavy in you right now?",
+    answerIndex: 0,
+    progressNumber: 1,
   },
   {
     type: "question",
     label: "Current Question",
     text: "What is happening inside you right now, in this moment?",
+    answerIndex: 1,
+    progressNumber: 2,
   },
   {
     type: "question",
     label: "Current Question",
     text: "Where do you feel it in your body?",
+    answerIndex: 2,
+    progressNumber: 3,
   },
   {
     type: "question",
     label: "Current Question",
     text: "What thought is your mind repeating about this?",
+    answerIndex: 3,
+    progressNumber: 4,
   },
   {
     type: "action",
     label: "Important Action",
-    text: "Take a moment and breathe slowly for 3 breaths, making each exhale longer than the inhale, so that this next question can be answered clearly.",
+    text: "Take a moment and breathe slowly for 3 breaths, making each exhale longer than the inhale, so that the next question can be answered clearly.",
+    progressNumber: 4,
   },
   {
     type: "question",
     label: "Current Question",
     text: "If you didn’t believe that thought for a moment, what would remain?",
+    answerIndex: 4,
+    progressNumber: 5,
   },
   {
     type: "question",
     label: "Current Question",
     text: "Is there one small action available to you right now?",
+    answerIndex: 5,
+    progressNumber: 6,
   },
 ] as const;
-
-const QUESTION_STEP_INDEXES = STEPS.map((step, index) =>
-  step.type === "question" ? index : -1
-).filter((index) => index !== -1);
 
 const API_URL = "https://thoughtclarity-api.onrender.com/clarity";
 
@@ -61,44 +70,42 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
 
   const currentStep = STEPS[step];
-  const isQuestionStep = currentStep.type === "question";
   const isLastStep = step === STEPS.length - 1;
-
-  const currentQuestionNumber = QUESTION_STEP_INDEXES.indexOf(step) + 1;
-  const progress = isQuestionStep
-    ? `${currentQuestionNumber} / 6`
-    : `${currentQuestionNumber} / 6`;
-
-  const getAnswerIndexForStep = (stepIndex: number) => {
-    return QUESTION_STEP_INDEXES.indexOf(stepIndex);
-  };
+  const progress = `${currentStep.progressNumber} / 6`;
 
   const handleNext = () => {
     if (currentStep.type === "action") {
-      setStep(step + 1);
-      setInput(answers[getAnswerIndexForStep(step + 1)] || "");
+      const nextStep = step + 1;
+      setStep(nextStep);
+
+      if (STEPS[nextStep].type === "question") {
+        const nextAnswerIndex = STEPS[nextStep].answerIndex;
+        setInput(answers[nextAnswerIndex] || "");
+      } else {
+        setInput("");
+      }
       return;
     }
 
     if (!input.trim()) return;
 
-    const answerIndex = getAnswerIndexForStep(step);
     const updated = [...answers];
-    updated[answerIndex] = input.trim();
+    updated[currentStep.answerIndex] = input.trim();
     setAnswers(updated);
 
     if (isLastStep) {
       generateClarity(updated);
-    } else {
-      const nextStep = step + 1;
-      setStep(nextStep);
+      return;
+    }
 
-      if (STEPS[nextStep].type === "question") {
-        const nextAnswerIndex = getAnswerIndexForStep(nextStep);
-        setInput(updated[nextAnswerIndex] || "");
-      } else {
-        setInput("");
-      }
+    const nextStep = step + 1;
+    setStep(nextStep);
+
+    if (STEPS[nextStep].type === "question") {
+      const nextAnswerIndex = STEPS[nextStep].answerIndex;
+      setInput(updated[nextAnswerIndex] || "");
+    } else {
+      setInput("");
     }
   };
 
@@ -108,8 +115,7 @@ export default function HomeScreen() {
     const updated = [...answers];
 
     if (currentStep.type === "question") {
-      const answerIndex = getAnswerIndexForStep(step);
-      updated[answerIndex] = input;
+      updated[currentStep.answerIndex] = input;
     }
 
     const previousStep = step - 1;
@@ -117,7 +123,7 @@ export default function HomeScreen() {
     setStep(previousStep);
 
     if (STEPS[previousStep].type === "question") {
-      const previousAnswerIndex = getAnswerIndexForStep(previousStep);
+      const previousAnswerIndex = STEPS[previousStep].answerIndex;
       setInput(updated[previousAnswerIndex] || "");
     } else {
       setInput("");
@@ -283,7 +289,7 @@ export default function HomeScreen() {
               style={[
                 styles.progressFill,
                 {
-                  width: `${(currentQuestionNumber / 6) * 100}%`,
+                  width: `${(currentStep.progressNumber / 6) * 100}%`,
                 },
               ]}
             />
@@ -310,7 +316,7 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.actionInstructionBox}>
             <Text style={styles.actionInstructionText}>
-              When you’ve done the breathing, click Next to continue.
+              After you’ve done the breathing, click Next.
             </Text>
           </View>
         )}
@@ -421,8 +427,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#171D2B",
     borderWidth: 1,
     borderColor: "#7C8BFF",
-    borderRadius: 18,
-    padding: 20,
+    borderRadius: 20,
+    padding: 22,
     marginBottom: 16,
   },
   questionLabel: {
@@ -441,22 +447,26 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: "#F5F7FB",
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
-    lineHeight: 32,
+    lineHeight: 34,
   },
   actionInstructionBox: {
+    minHeight: 160,
     backgroundColor: "#0F131B",
     borderWidth: 1,
     borderColor: "#232938",
     borderRadius: 18,
     padding: 16,
     marginBottom: 18,
+    alignItems: "center",
+    justifyContent: "center",
   },
   actionInstructionText: {
     color: "#E8ECF3",
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 28,
     textAlign: "center",
   },
   input: {
@@ -562,15 +572,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#AEB8FF",
     borderRadius: 20,
-    padding: 20,
-    marginTop: 4,
+    padding: 22,
     marginBottom: 20,
   },
   noticeText: {
     color: "#F5F7FB",
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
     textAlign: "center",
-    lineHeight: 30,
+    lineHeight: 32,
   },
 });
