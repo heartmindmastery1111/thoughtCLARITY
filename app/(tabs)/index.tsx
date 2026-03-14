@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -62,6 +62,15 @@ const STEPS = [
 
 const API_URL = "https://thoughtclarity-api.onrender.com/clarity";
 
+const BREATH_SEQUENCE = [
+  { label: "Inhale", duration: 4000 },
+  { label: "Exhale", duration: 6000 },
+  { label: "Inhale", duration: 4000 },
+  { label: "Exhale", duration: 6000 },
+  { label: "Inhale", duration: 4000 },
+  { label: "Exhale", duration: 6000 },
+] as const;
+
 export default function HomeScreen() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<string[]>(Array(6).fill(""));
@@ -69,12 +78,48 @@ export default function HomeScreen() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [breathIndex, setBreathIndex] = useState(0);
+  const [breathingComplete, setBreathingComplete] = useState(false);
+
   const currentStep = STEPS[step];
   const isLastStep = step === STEPS.length - 1;
   const progress = `${currentStep.progressNumber} / 6`;
 
+  const currentBreathLabel = useMemo(() => {
+    if (currentStep.type !== "action") return "";
+    if (breathingComplete) return "Complete";
+    return BREATH_SEQUENCE[breathIndex]?.label ?? "";
+  }, [currentStep.type, breathIndex, breathingComplete]);
+
+  useEffect(() => {
+    if (currentStep.type !== "action") {
+      setBreathIndex(0);
+      setBreathingComplete(false);
+      return;
+    }
+
+    if (breathingComplete) return;
+
+    if (breathIndex >= BREATH_SEQUENCE.length) {
+      setBreathingComplete(true);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (breathIndex === BREATH_SEQUENCE.length - 1) {
+        setBreathingComplete(true);
+      } else {
+        setBreathIndex((prev) => prev + 1);
+      }
+    }, BREATH_SEQUENCE[breathIndex].duration);
+
+    return () => clearTimeout(timer);
+  }, [currentStep.type, breathIndex, breathingComplete]);
+
   const handleNext = () => {
     if (currentStep.type === "action") {
+      if (!breathingComplete) return;
+
       const nextStep = step + 1;
       setStep(nextStep);
 
@@ -162,6 +207,8 @@ export default function HomeScreen() {
     setInput("");
     setResult("");
     setLoading(false);
+    setBreathIndex(0);
+    setBreathingComplete(false);
   };
 
   if (result) {
@@ -314,9 +361,13 @@ export default function HomeScreen() {
             textAlignVertical="top"
           />
         ) : (
-          <View style={styles.actionInstructionBox}>
-            <Text style={styles.actionInstructionText}>
-              After you’ve done the breathing, click Next.
+          <View style={styles.breathingPanel}>
+            <Text style={styles.breathingLabel}>Breath Cue</Text>
+            <Text style={styles.breathingWord}>{currentBreathLabel}</Text>
+            <Text style={styles.breathingSubtext}>
+              {breathingComplete
+                ? "You’ve completed 3 breaths. Click Next."
+                : "Follow the word on the screen."}
             </Text>
           </View>
         )}
@@ -339,10 +390,15 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={[
                 styles.button,
-                currentStep.type === "question" && !input.trim() && styles.buttonDisabled,
+                ((currentStep.type === "question" && !input.trim()) ||
+                  (currentStep.type === "action" && !breathingComplete)) &&
+                  styles.buttonDisabled,
               ]}
               onPress={handleNext}
-              disabled={currentStep.type === "question" && !input.trim()}
+              disabled={
+                (currentStep.type === "question" && !input.trim()) ||
+                (currentStep.type === "action" && !breathingComplete)
+              }
             >
               <Text style={styles.buttonText}>
                 {isLastStep ? "Generate Clarity" : "Next"}
@@ -451,22 +507,38 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 34,
   },
-  actionInstructionBox: {
+  breathingPanel: {
     minHeight: 160,
     backgroundColor: "#0F131B",
     borderWidth: 1,
     borderColor: "#232938",
     borderRadius: 18,
-    padding: 16,
+    padding: 20,
     marginBottom: 18,
     alignItems: "center",
     justifyContent: "center",
   },
-  actionInstructionText: {
-    color: "#E8ECF3",
-    fontSize: 18,
+  breathingLabel: {
+    color: "#7C8BFF",
+    fontSize: 12,
     fontWeight: "700",
-    lineHeight: 28,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 14,
+  },
+  breathingWord: {
+    color: "#F5F7FB",
+    fontSize: 40,
+    fontWeight: "800",
+    lineHeight: 48,
+    marginBottom: 14,
+    textAlign: "center",
+  },
+  breathingSubtext: {
+    color: "#E8ECF3",
+    fontSize: 16,
+    fontWeight: "600",
+    lineHeight: 24,
     textAlign: "center",
   },
   input: {
