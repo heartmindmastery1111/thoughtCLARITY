@@ -230,6 +230,7 @@ export default function HomeScreen() {
       fact: "",
       mindStory: "",
       clarityAnchor: "",
+      reminder: "",
       oneSmallAction: "",
     };
 
@@ -252,6 +253,7 @@ export default function HomeScreen() {
       else if (normalizedLine === "FACT") current = "fact";
       else if (normalizedLine === "MIND STORY") current = "mindStory";
       else if (normalizedLine === "CLARITY ANCHOR") current = "clarityAnchor";
+      else if (normalizedLine === "REMINDER") current = "reminder";
       else if (normalizedLine === "ONE SMALL ACTION") current = "oneSmallAction";
       else if (current) {
         const cleanedContent = rawLine.replace(/^[\-\s]+/, "").trim();
@@ -311,6 +313,11 @@ export default function HomeScreen() {
           <View style={styles.anchorBox}>
             <Text style={styles.anchorLabel}>Clarity Anchor</Text>
             <Text style={styles.anchorText}>{sections.clarityAnchor}</Text>
+          </View>
+
+          <View style={styles.reminderBox}>
+            <Text style={styles.reminderLabel}>Reminder</Text>
+            <Text style={styles.reminderText}>{sections.reminder}</Text>
           </View>
 
           <View style={styles.section}>
@@ -691,6 +698,29 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     lineHeight: 32,
+  },
+  reminderBox: {
+    backgroundColor: "#121A28",
+    borderWidth: 1,
+    borderColor: "#8FA8FF",
+    borderRadius: 20,
+    padding: 22,
+    marginBottom: 16,
+  },
+  reminderLabel: {
+    color: "#C5D0FF",
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 10,
+    textTransform: "uppercase",
+    textAlign: "center",
+  },
+  reminderText: {
+    color: "#F5F7FB",
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+    lineHeight: 30,
   },
   noticeBox: {
     backgroundColor: "#171D2B",
