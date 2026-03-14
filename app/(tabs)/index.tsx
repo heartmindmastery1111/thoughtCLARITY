@@ -45,6 +45,12 @@ const STEPS = [
     progressNumber: 4,
   },
   {
+    type: "breathing",
+    label: "Breath Cue",
+    text: "Follow the breathing rhythm below.",
+    progressNumber: 4,
+  },
+  {
     type: "question",
     label: "Current Question",
     text: "If you didn’t believe that thought for a moment, what would remain?",
@@ -86,13 +92,13 @@ export default function HomeScreen() {
   const progress = `${currentStep.progressNumber} / 6`;
 
   const currentBreathLabel = useMemo(() => {
-    if (currentStep.type !== "action") return "";
+    if (currentStep.type !== "breathing") return "";
     if (breathingComplete) return "Complete";
     return BREATH_SEQUENCE[breathIndex]?.label ?? "";
   }, [currentStep.type, breathIndex, breathingComplete]);
 
   useEffect(() => {
-    if (currentStep.type !== "action") {
+    if (currentStep.type !== "breathing") {
       setBreathIndex(0);
       setBreathingComplete(false);
       return;
@@ -118,6 +124,13 @@ export default function HomeScreen() {
 
   const handleNext = () => {
     if (currentStep.type === "action") {
+      const nextStep = step + 1;
+      setStep(nextStep);
+      setInput("");
+      return;
+    }
+
+    if (currentStep.type === "breathing") {
       if (!breathingComplete) return;
 
       const nextStep = step + 1;
@@ -343,9 +356,21 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={currentStep.type === "action" ? styles.actionBox : styles.questionBox}>
+        <View
+          style={
+            currentStep.type === "action" || currentStep.type === "breathing"
+              ? styles.actionBox
+              : styles.questionBox
+          }
+        >
           <Text style={styles.questionLabel}>{currentStep.label}</Text>
-          <Text style={currentStep.type === "action" ? styles.actionText : styles.questionText}>
+          <Text
+            style={
+              currentStep.type === "action" || currentStep.type === "breathing"
+                ? styles.actionText
+                : styles.questionText
+            }
+          >
             {currentStep.text}
           </Text>
         </View>
@@ -360,6 +385,12 @@ export default function HomeScreen() {
             onChangeText={setInput}
             textAlignVertical="top"
           />
+        ) : currentStep.type === "action" ? (
+          <View style={styles.actionInstructionBox}>
+            <Text style={styles.actionInstructionText}>
+              When you are ready to begin the 3 breaths, click the button below.
+            </Text>
+          </View>
         ) : (
           <View style={styles.breathingPanel}>
             <Text style={styles.breathingLabel}>Breath Cue</Text>
@@ -391,17 +422,21 @@ export default function HomeScreen() {
               style={[
                 styles.button,
                 ((currentStep.type === "question" && !input.trim()) ||
-                  (currentStep.type === "action" && !breathingComplete)) &&
+                  (currentStep.type === "breathing" && !breathingComplete)) &&
                   styles.buttonDisabled,
               ]}
               onPress={handleNext}
               disabled={
                 (currentStep.type === "question" && !input.trim()) ||
-                (currentStep.type === "action" && !breathingComplete)
+                (currentStep.type === "breathing" && !breathingComplete)
               }
             >
               <Text style={styles.buttonText}>
-                {isLastStep ? "Generate Clarity" : "Next"}
+                {currentStep.type === "action"
+                  ? "I am ready"
+                  : isLastStep
+                  ? "Generate Clarity"
+                  : "Next"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -506,6 +541,24 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "800",
     lineHeight: 34,
+  },
+  actionInstructionBox: {
+    minHeight: 160,
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionInstructionText: {
+    color: "#E8ECF3",
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 28,
+    textAlign: "center",
   },
   breathingPanel: {
     minHeight: 160,
