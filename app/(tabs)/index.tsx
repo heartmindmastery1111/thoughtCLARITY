@@ -75,7 +75,7 @@ export default function HomeScreen() {
       });
 
       const data = await response.json();
-      setResult(data.result || "No response returned.");
+      setResult(typeof data.result === "string" ? data.result : JSON.stringify(data, null, 2));
     } catch (error) {
       setResult("Something went wrong while generating clarity.");
     } finally {
@@ -100,17 +100,55 @@ export default function HomeScreen() {
       oneSmallAction: "",
     };
 
-    const lines = result.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = result
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
 
     let current = "";
 
-    for (const line of lines) {
-      if (line === "REFLECTION") current = "reflection";
-      else if (line === "FACT") current = "fact";
-      else if (line === "MIND STORY") current = "mindStory";
-      else if (line === "CLARITY ANCHOR") current = "clarityAnchor";
-      else if (line === "ONE SMALL ACTION") current = "oneSmallAction";
-      else if (current) sections[current] += (sections[current] ? "\n" : "") + line;
+    for (const rawLine of lines) {
+      const normalizedLine = rawLine
+        .replace(/\*\*/g, "")
+        .replace(/^[#\-\s]+/, "")
+        .replace(/:$/, "")
+        .trim()
+        .toUpperCase();
+
+      if (normalizedLine === "REFLECTION") current = "reflection";
+      else if (normalizedLine === "FACT") current = "fact";
+      else if (normalizedLine === "MIND STORY") current = "mindStory";
+      else if (normalizedLine === "CLARITY ANCHOR") current = "clarityAnchor";
+      else if (normalizedLine === "ONE SMALL ACTION") current = "oneSmallAction";
+      else if (current) {
+        const cleanedContent = rawLine.replace(/^[\-\s]+/, "").trim();
+        sections[current] += (sections[current] ? "\n" : "") + cleanedContent;
+      }
+    }
+
+    const hasParsedSections = Object.values(sections).some((value) => value.trim().length > 0);
+
+    if (!hasParsedSections) {
+      return (
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.card}>
+            <Text style={styles.eyebrow}>THOUGHTCLARITY</Text>
+            <Text style={styles.title}>Raw Response</Text>
+            <Text style={styles.subtitle}>
+              The AI responded, but the section parser did not match the format yet.
+            </Text>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Full Response</Text>
+              <Text style={styles.sectionText}>{result}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.button} onPress={handleRestart}>
+              <Text style={styles.buttonText}>Start Again</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      );
     }
 
     return (
