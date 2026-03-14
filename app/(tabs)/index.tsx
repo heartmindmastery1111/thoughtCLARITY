@@ -9,39 +9,96 @@ import {
   View,
 } from "react-native";
 
-const QUESTIONS = [
-  "What feels most heavy in you right now?",
-  "What is happening inside you right now, in this moment?",
-  "Where do you feel it in your body?",
-  "What thought is your mind repeating about this?",
-  "Take a moment and breathe slowly for 3 breaths, making each exhale longer than the inhale. If you didn’t believe that thought for a moment, what would remain?",
-  "Is there one small action available to you right now?",
-];
+const STEPS = [
+  {
+    type: "question",
+    label: "Current Question",
+    text: "What feels most heavy in you right now?",
+  },
+  {
+    type: "question",
+    label: "Current Question",
+    text: "What is happening inside you right now, in this moment?",
+  },
+  {
+    type: "question",
+    label: "Current Question",
+    text: "Where do you feel it in your body?",
+  },
+  {
+    type: "question",
+    label: "Current Question",
+    text: "What thought is your mind repeating about this?",
+  },
+  {
+    type: "action",
+    label: "Important Action",
+    text: "Take a moment and breathe slowly for 3 breaths, making each exhale longer than the inhale, so that this next question can be answered clearly.",
+  },
+  {
+    type: "question",
+    label: "Current Question",
+    text: "If you didn’t believe that thought for a moment, what would remain?",
+  },
+  {
+    type: "question",
+    label: "Current Question",
+    text: "Is there one small action available to you right now?",
+  },
+] as const;
+
+const QUESTION_STEP_INDEXES = STEPS.map((step, index) =>
+  step.type === "question" ? index : -1
+).filter((index) => index !== -1);
 
 const API_URL = "https://thoughtclarity-api.onrender.com/clarity";
 
 export default function HomeScreen() {
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<string[]>(Array(QUESTIONS.length).fill(""));
+  const [answers, setAnswers] = useState<string[]>(Array(6).fill(""));
   const [input, setInput] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const isLastStep = step === QUESTIONS.length - 1;
-  const progress = `${step + 1} / ${QUESTIONS.length}`;
+  const currentStep = STEPS[step];
+  const isQuestionStep = currentStep.type === "question";
+  const isLastStep = step === STEPS.length - 1;
+
+  const currentQuestionNumber = QUESTION_STEP_INDEXES.indexOf(step) + 1;
+  const progress = isQuestionStep
+    ? `${currentQuestionNumber} / 6`
+    : `${currentQuestionNumber} / 6`;
+
+  const getAnswerIndexForStep = (stepIndex: number) => {
+    return QUESTION_STEP_INDEXES.indexOf(stepIndex);
+  };
 
   const handleNext = () => {
+    if (currentStep.type === "action") {
+      setStep(step + 1);
+      setInput(answers[getAnswerIndexForStep(step + 1)] || "");
+      return;
+    }
+
     if (!input.trim()) return;
 
+    const answerIndex = getAnswerIndexForStep(step);
     const updated = [...answers];
-    updated[step] = input.trim();
+    updated[answerIndex] = input.trim();
     setAnswers(updated);
 
     if (isLastStep) {
       generateClarity(updated);
     } else {
-      setStep(step + 1);
-      setInput(updated[step + 1] || "");
+      const nextStep = step + 1;
+      setStep(nextStep);
+
+      if (STEPS[nextStep].type === "question") {
+        const nextAnswerIndex = getAnswerIndexForStep(nextStep);
+        setInput(updated[nextAnswerIndex] || "");
+      } else {
+        setInput("");
+      }
     }
   };
 
@@ -49,12 +106,22 @@ export default function HomeScreen() {
     if (step === 0) return;
 
     const updated = [...answers];
-    updated[step] = input;
+
+    if (currentStep.type === "question") {
+      const answerIndex = getAnswerIndexForStep(step);
+      updated[answerIndex] = input;
+    }
 
     const previousStep = step - 1;
     setAnswers(updated);
     setStep(previousStep);
-    setInput(updated[previousStep] || "");
+
+    if (STEPS[previousStep].type === "question") {
+      const previousAnswerIndex = getAnswerIndexForStep(previousStep);
+      setInput(updated[previousAnswerIndex] || "");
+    } else {
+      setInput("");
+    }
   };
 
   const generateClarity = async (finalAnswers: string[]) => {
@@ -85,7 +152,7 @@ export default function HomeScreen() {
 
   const handleRestart = () => {
     setStep(0);
-    setAnswers(Array(QUESTIONS.length).fill(""));
+    setAnswers(Array(6).fill(""));
     setInput("");
     setResult("");
     setLoading(false);
@@ -185,9 +252,11 @@ export default function HomeScreen() {
             <Text style={styles.sectionText}>{sections.oneSmallAction}</Text>
           </View>
 
-          <Text style={styles.reinforcementText}>
-            Notice what changes in your body when you read the clarity anchor.
-          </Text>
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>
+              Notice what changes in your body when you read the clarity anchor.
+            </Text>
+          </View>
 
           <TouchableOpacity style={styles.button} onPress={handleRestart}>
             <Text style={styles.buttonText}>Start Again</Text>
@@ -213,26 +282,38 @@ export default function HomeScreen() {
             <View
               style={[
                 styles.progressFill,
-                { width: `${((step + 1) / QUESTIONS.length) * 100}%` },
+                {
+                  width: `${(currentQuestionNumber / 6) * 100}%`,
+                },
               ]}
             />
           </View>
         </View>
 
-        <View style={styles.questionBox}>
-          <Text style={styles.questionLabel}>Current Question</Text>
-          <Text style={styles.questionText}>{QUESTIONS[step]}</Text>
+        <View style={currentStep.type === "action" ? styles.actionBox : styles.questionBox}>
+          <Text style={styles.questionLabel}>{currentStep.label}</Text>
+          <Text style={currentStep.type === "action" ? styles.actionText : styles.questionText}>
+            {currentStep.text}
+          </Text>
         </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Type your answer here..."
-          placeholderTextColor="#7A7F8A"
-          multiline
-          value={input}
-          onChangeText={setInput}
-          textAlignVertical="top"
-        />
+        {currentStep.type === "question" ? (
+          <TextInput
+            style={styles.input}
+            placeholder="Type your answer here..."
+            placeholderTextColor="#7A7F8A"
+            multiline
+            value={input}
+            onChangeText={setInput}
+            textAlignVertical="top"
+          />
+        ) : (
+          <View style={styles.actionInstructionBox}>
+            <Text style={styles.actionInstructionText}>
+              When you’ve done the breathing, click Next to continue.
+            </Text>
+          </View>
+        )}
 
         {loading ? (
           <View style={styles.loadingBox}>
@@ -250,12 +331,15 @@ export default function HomeScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.button, !input.trim() && styles.buttonDisabled]}
+              style={[
+                styles.button,
+                currentStep.type === "question" && !input.trim() && styles.buttonDisabled,
+              ]}
               onPress={handleNext}
-              disabled={!input.trim()}
+              disabled={currentStep.type === "question" && !input.trim()}
             >
               <Text style={styles.buttonText}>
-                {isLastStep ? "Generate Clarity" : "Next Question"}
+                {isLastStep ? "Generate Clarity" : "Next"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -333,18 +417,47 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 16,
   },
+  actionBox: {
+    backgroundColor: "#171D2B",
+    borderWidth: 1,
+    borderColor: "#7C8BFF",
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 16,
+  },
   questionLabel: {
     color: "#7C8BFF",
     fontSize: 13,
     fontWeight: "700",
     marginBottom: 8,
     letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   questionText: {
     color: "#F5F7FB",
     fontSize: 20,
     fontWeight: "700",
     lineHeight: 28,
+  },
+  actionText: {
+    color: "#F5F7FB",
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 32,
+  },
+  actionInstructionBox: {
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 18,
+  },
+  actionInstructionText: {
+    color: "#E8ECF3",
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
   },
   input: {
     minHeight: 160,
@@ -401,13 +514,6 @@ const styles = StyleSheet.create({
     color: "#A8B0BD",
     fontSize: 14,
   },
-  reinforcementText: {
-    color: "#A8B0BD",
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 20,
-  },
   section: {
     backgroundColor: "#0F131B",
     borderWidth: 1,
@@ -450,5 +556,21 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     lineHeight: 32,
+  },
+  noticeBox: {
+    backgroundColor: "#171D2B",
+    borderWidth: 1,
+    borderColor: "#AEB8FF",
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  noticeText: {
+    color: "#F5F7FB",
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+    lineHeight: 30,
   },
 });
