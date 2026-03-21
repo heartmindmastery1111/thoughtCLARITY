@@ -166,7 +166,7 @@ GLOBAL RULES
 - If the CLARITY ANCHOR sounds like reassurance or self-protection, rewrite it until it sounds purely observational.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.2-thinking",
+      model: "gpt-5.2",
       temperature: 0.2,
       messages: [{ role: "user", content: prompt }],
     });
@@ -183,7 +183,7 @@ GLOBAL RULES
       result,
       debug: {
         expected_prompt_version: "PROMPT_VERSION_RETURN_V9",
-        model: "gpt-5.2-thinking",
+        model: "gpt-5.2",
       },
     });
   } catch (error) {
