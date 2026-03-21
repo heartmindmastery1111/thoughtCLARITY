@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,58 +10,49 @@ import {
   View,
 } from "react-native";
 
-const STEPS = [
+const QUESTIONS = [
   {
-    type: "question",
     label: "Current Question",
-    text: "What feels most heavy in you right now?",
+    text: "What feels heavy, uncomfortable, or upsetting right now?",
+    example:
+      "Example: “I’m feeling guilty about what happened.” or “I feel stressed about money.”",
     answerIndex: 0,
     progressNumber: 1,
   },
   {
-    type: "question",
     label: "Current Question",
-    text: "What is happening inside you right now, in this moment?",
+    text: "What do you notice happening inside you right now?",
+    example:
+      "Example: “My thoughts are racing.” or “I feel anxious, sad, and overwhelmed.”",
     answerIndex: 1,
     progressNumber: 2,
   },
   {
-    type: "question",
     label: "Current Question",
-    text: "Where do you feel it in your body?",
+    text: "Where do you feel this in your body?",
+    example: "Example: “In my chest.” or “My stomach feels tight.”",
     answerIndex: 2,
     progressNumber: 3,
   },
   {
-    type: "question",
     label: "Current Question",
-    text: "What thought is your mind repeating about this?",
+    text: "What thought keeps coming up about this situation?",
+    example: "Example: “It’s my fault.” or “I’m not good enough.”",
     answerIndex: 3,
     progressNumber: 4,
   },
   {
-    type: "action",
-    label: "Important Action",
-    text: "Take a moment and breathe slowly for 3 breaths, making each exhale longer than the inhale, so that the next question can be answered clearly.",
-    progressNumber: 4,
-  },
-  {
-    type: "breathing",
-    label: "Breath Cue",
-    text: "Follow the breathing rhythm below.",
-    progressNumber: 4,
-  },
-  {
-    type: "question",
     label: "Current Question",
-    text: "If you didn’t believe that thought for a moment, what would remain?",
+    text: "If you didn’t fully believe that thought for a moment, what would still be here?",
+    example: "Example: “I’d still be here feeling this, but safe right now.”",
     answerIndex: 4,
     progressNumber: 5,
   },
   {
-    type: "question",
     label: "Current Question",
-    text: "Is there one small action available to you right now?",
+    text: "What is one small thing you can do right now?",
+    example:
+      "Example: “Take a few slow breaths.” or “Drink some water and sit for a moment.”",
     answerIndex: 5,
     progressNumber: 6,
   },
@@ -75,10 +67,32 @@ const BREATH_SEQUENCE = [
   { label: "Exhale", duration: 6000 },
   { label: "Inhale", duration: 4000 },
   { label: "Exhale", duration: 6000 },
+  { label: "Inhale", duration: 4000 },
+  { label: "Exhale", duration: 6000 },
+  { label: "Inhale", duration: 4000 },
+  { label: "Exhale", duration: 6000 },
 ] as const;
 
+type Screen =
+  | "intro"
+  | "breathe"
+  | "reflect"
+  | "loading"
+  | "result"
+  | "integrate";
+
+type ParsedSections = {
+  reflection: string;
+  fact: string;
+  mindStory: string;
+  clarityAnchor: string;
+  reminder: string;
+  oneSmallAction: string;
+};
+
 export default function HomeScreen() {
-  const [step, setStep] = useState(0);
+  const [screen, setScreen] = useState<Screen>("intro");
+  const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>(Array(6).fill(""));
   const [input, setInput] = useState("");
   const [result, setResult] = useState("");
@@ -87,113 +101,202 @@ export default function HomeScreen() {
   const [breathIndex, setBreathIndex] = useState(0);
   const [breathingComplete, setBreathingComplete] = useState(false);
 
-  const currentStep = STEPS[step];
-  const isLastStep = step === STEPS.length - 1;
-  const progress = `${currentStep.progressNumber} / 6`;
+  const breathWordOpacity = useRef(new Animated.Value(0)).current;
+  const breathWordScale = useRef(new Animated.Value(1)).current;
+  const breathCircleScale = useRef(new Animated.Value(1)).current;
+  const breathGuideOpacity = useRef(new Animated.Value(1)).current;
+  const breathingDoneOpacity = useRef(new Animated.Value(0)).current;
+
+  const currentQuestion = QUESTIONS[questionIndex];
+  const progress = `${currentQuestion.progressNumber} / 6`;
 
   const currentBreathLabel = useMemo(() => {
-    if (currentStep.type !== "breathing") return "";
-    if (breathingComplete) return "Complete";
+    if (screen !== "breathe") return "";
+    if (breathingComplete) return "";
     return BREATH_SEQUENCE[breathIndex]?.label ?? "";
-  }, [currentStep.type, breathIndex, breathingComplete]);
+  }, [screen, breathIndex, breathingComplete]);
 
   useEffect(() => {
-    if (currentStep.type !== "breathing") {
+    if (screen !== "breathe") {
       setBreathIndex(0);
       setBreathingComplete(false);
+      breathWordOpacity.setValue(0);
+      breathWordScale.setValue(1);
+      breathCircleScale.setValue(1);
+      breathGuideOpacity.setValue(1);
+      breathingDoneOpacity.setValue(0);
       return;
     }
 
-    if (breathingComplete) return;
+    if (breathingComplete) {
+      Animated.timing(breathingDoneOpacity, {
+        toValue: 1,
+        duration: 450,
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
 
     if (breathIndex >= BREATH_SEQUENCE.length) {
       setBreathingComplete(true);
       return;
     }
 
+    const breathStep = BREATH_SEQUENCE[breathIndex];
+    const isInhale = breathStep.label === "Inhale";
+
+    breathWordOpacity.setValue(0);
+    breathWordScale.setValue(isInhale ? 0.96 : 1.04);
+    breathCircleScale.setValue(isInhale ? 0.86 : 1.08);
+
+    if (breathIndex === 0) {
+      Animated.timing(breathGuideOpacity, {
+        toValue: 0.4,
+        duration: 1200,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(breathWordOpacity, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathWordOpacity, {
+          toValue: 0.25,
+          duration: Math.max(900, breathStep.duration - 900),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.timing(breathWordScale, {
+        toValue: isInhale ? 1.05 : 0.95,
+        duration: breathStep.duration,
+        useNativeDriver: true,
+      }),
+      Animated.timing(breathCircleScale, {
+        toValue: isInhale ? 1.12 : 0.9,
+        duration: breathStep.duration,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     const timer = setTimeout(() => {
       if (breathIndex === BREATH_SEQUENCE.length - 1) {
-        setBreathingComplete(true);
+        Animated.parallel([
+          Animated.timing(breathWordOpacity, {
+            toValue: 0,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+          Animated.timing(breathCircleScale, {
+            toValue: 0.92,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setBreathingComplete(true);
+        });
       } else {
         setBreathIndex((prev) => prev + 1);
       }
-    }, BREATH_SEQUENCE[breathIndex].duration);
+    }, breathStep.duration);
 
-    return () => clearTimeout(timer);
-  }, [currentStep.type, breathIndex, breathingComplete]);
+    return () => {
+      clearTimeout(timer);
+      breathWordOpacity.stopAnimation();
+      breathWordScale.stopAnimation();
+      breathCircleScale.stopAnimation();
+      breathGuideOpacity.stopAnimation();
+      breathingDoneOpacity.stopAnimation();
+    };
+  }, [
+    screen,
+    breathIndex,
+    breathingComplete,
+    breathWordOpacity,
+    breathWordScale,
+    breathCircleScale,
+    breathGuideOpacity,
+    breathingDoneOpacity,
+  ]);
 
-  const handleNext = () => {
-    if (currentStep.type === "action") {
-      const nextStep = step + 1;
-      setStep(nextStep);
-      setInput("");
-      return;
-    }
+  const startFlow = () => {
+    setResult("");
+    setAnswers(Array(6).fill(""));
+    setInput("");
+    setQuestionIndex(0);
+    setScreen("breathe");
+  };
 
-    if (currentStep.type === "breathing") {
-      if (!breathingComplete) return;
+  const handleBreathingNext = () => {
+    if (!breathingComplete) return;
+    setScreen("reflect");
+    setQuestionIndex(0);
+    setInput(answers[0] || "");
+  };
 
-      const nextStep = step + 1;
-      setStep(nextStep);
-
-      if (STEPS[nextStep].type === "question") {
-        const nextAnswerIndex = STEPS[nextStep].answerIndex;
-        setInput(answers[nextAnswerIndex] || "");
-      } else {
-        setInput("");
-      }
-      return;
-    }
-
+  const handleNextQuestion = () => {
     if (!input.trim()) return;
 
     const updated = [...answers];
-    updated[currentStep.answerIndex] = input.trim();
+    updated[currentQuestion.answerIndex] = input.trim();
     setAnswers(updated);
 
-    if (isLastStep) {
+    const isLastQuestion = questionIndex === QUESTIONS.length - 1;
+
+    if (isLastQuestion) {
       generateClarity(updated);
       return;
     }
 
-    const nextStep = step + 1;
-    setStep(nextStep);
-
-    if (STEPS[nextStep].type === "question") {
-      const nextAnswerIndex = STEPS[nextStep].answerIndex;
-      setInput(updated[nextAnswerIndex] || "");
-    } else {
-      setInput("");
-    }
+    const nextIndex = questionIndex + 1;
+    setQuestionIndex(nextIndex);
+    setInput(updated[QUESTIONS[nextIndex].answerIndex] || "");
   };
 
   const handleBack = () => {
-    if (step === 0) return;
+    if (screen === "intro" || screen === "loading") return;
 
-    const updated = [...answers];
-
-    if (currentStep.type === "question") {
-      updated[currentStep.answerIndex] = input;
+    if (screen === "integrate") {
+      setScreen("result");
+      return;
     }
 
-    const previousStep = step - 1;
-    setAnswers(updated);
-    setStep(previousStep);
+    if (screen === "result") {
+      return;
+    }
 
-    if (STEPS[previousStep].type === "question") {
-      const previousAnswerIndex = STEPS[previousStep].answerIndex;
-      setInput(updated[previousAnswerIndex] || "");
-    } else {
-      setInput("");
+    if (screen === "breathe") {
+      setScreen("intro");
+      return;
+    }
+
+    if (screen === "reflect") {
+      const updated = [...answers];
+      updated[currentQuestion.answerIndex] = input;
+      setAnswers(updated);
+
+      if (questionIndex === 0) {
+        setScreen("breathe");
+        setInput("");
+        return;
+      }
+
+      const previousIndex = questionIndex - 1;
+      setQuestionIndex(previousIndex);
+      setInput(updated[QUESTIONS[previousIndex].answerIndex] || "");
     }
   };
 
   const generateClarity = async (finalAnswers: string[]) => {
     setLoading(true);
+    setScreen("loading");
     setResult("");
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 1800));
 
       const response = await fetch(API_URL, {
         method: "POST",
@@ -206,26 +309,38 @@ export default function HomeScreen() {
       });
 
       const data = await response.json();
-      setResult(typeof data.result === "string" ? data.result : JSON.stringify(data, null, 2));
+      setResult(
+        typeof data.result === "string"
+          ? data.result
+          : JSON.stringify(data, null, 2)
+      );
+      setScreen("result");
     } catch (error) {
       setResult("Something went wrong while generating clarity.");
+      setScreen("result");
     } finally {
       setLoading(false);
     }
   };
 
   const handleRestart = () => {
-    setStep(0);
+    setScreen("intro");
+    setQuestionIndex(0);
     setAnswers(Array(6).fill(""));
     setInput("");
     setResult("");
     setLoading(false);
     setBreathIndex(0);
     setBreathingComplete(false);
+    breathWordOpacity.setValue(0);
+    breathWordScale.setValue(1);
+    breathCircleScale.setValue(1);
+    breathGuideOpacity.setValue(1);
+    breathingDoneOpacity.setValue(0);
   };
 
-  if (result) {
-    const sections: Record<string, string> = {
+  const parseSections = (rawResult: string): ParsedSections => {
+    const sections: ParsedSections = {
       reflection: "",
       fact: "",
       mindStory: "",
@@ -234,12 +349,12 @@ export default function HomeScreen() {
       oneSmallAction: "",
     };
 
-    const lines = result
+    const lines = rawResult
       .split("\n")
-      .map((l) => l.trim())
+      .map((line) => line.trim())
       .filter(Boolean);
 
-    let current = "";
+    let current: keyof ParsedSections | "" = "";
 
     for (const rawLine of lines) {
       const normalizedLine = rawLine
@@ -261,13 +376,21 @@ export default function HomeScreen() {
       }
     }
 
-    const hasParsedSections = Object.values(sections).some((value) => value.trim().length > 0);
+    return sections;
+  };
+
+  if (screen === "result" && result) {
+    const sections = parseSections(result);
+
+    const hasParsedSections = Object.values(sections).some(
+      (value) => value.trim().length > 0
+    );
 
     if (!hasParsedSections) {
       return (
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.card}>
-            <Text style={styles.eyebrow}>THOUGHTCLARITY</Text>
+            <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
             <Text style={styles.title}>Raw Response</Text>
             <Text style={styles.subtitle}>
               The AI responded, but the section parser did not match the format yet.
@@ -289,23 +412,23 @@ export default function HomeScreen() {
     return (
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.card}>
-          <Text style={styles.eyebrow}>THOUGHTCLARITY</Text>
+          <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
           <Text style={styles.title}>Your Clarity</Text>
           <Text style={styles.subtitle}>
             Read slowly. Let the clarity anchor land before moving on.
           </Text>
 
-          <View style={styles.section}>
+          <View style={styles.miniSection}>
             <Text style={styles.sectionTitle}>Reflection</Text>
             <Text style={styles.sectionText}>{sections.reflection}</Text>
           </View>
 
-          <View style={styles.section}>
+          <View style={styles.miniSection}>
             <Text style={styles.sectionTitle}>Fact</Text>
             <Text style={styles.sectionText}>{sections.fact}</Text>
           </View>
 
-          <View style={styles.section}>
+          <View style={styles.miniSection}>
             <Text style={styles.sectionTitle}>Mind Story</Text>
             <Text style={styles.sectionText}>{sections.mindStory}</Text>
           </View>
@@ -315,25 +438,250 @@ export default function HomeScreen() {
             <Text style={styles.anchorText}>{sections.clarityAnchor}</Text>
           </View>
 
-          <View style={styles.reminderBox}>
-            <Text style={styles.reminderLabel}>Reminder</Text>
-            <Text style={styles.reminderText}>{sections.reminder}</Text>
-          </View>
+          {!!sections.reminder.trim() && (
+            <View style={styles.softBox}>
+              <Text style={styles.softLabel}>Reminder</Text>
+              <Text style={styles.softText}>{sections.reminder}</Text>
+            </View>
+          )}
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>One Small Action</Text>
-            <Text style={styles.sectionText}>{sections.oneSmallAction}</Text>
-          </View>
+          {!!sections.oneSmallAction.trim() && (
+            <View style={styles.softBox}>
+              <Text style={styles.softLabel}>One Small Action</Text>
+              <Text style={styles.softText}>{sections.oneSmallAction}</Text>
+            </View>
+          )}
 
-          <View style={styles.noticeBox}>
-            <Text style={styles.noticeText}>
-              Notice what changes in your body when you read the clarity anchor.
+          <Text style={styles.noticeHelperText}>
+            Notice what changes in your body when you read the clarity anchor.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => setScreen("integrate")}
+          >
+            <Text style={styles.buttonText}>
+              Want to integrate or understand what happened?
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondaryActionButton}
+            onPress={handleRestart}
+          >
+            <Text style={styles.secondaryActionButtonText}>Start Again</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (screen === "integrate") {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
+          <Text style={styles.title}>Integrate</Text>
+          <Text style={styles.subtitle}>
+            This helps you understand the shift and close the loop.
+          </Text>
+
+          <View style={styles.integrateBox}>
+            <Text style={styles.integrateTitle}>What just happened</Text>
+            <Text style={styles.integrateText}>
+              You started with something that felt heavy. Instead of reacting to it,
+              you slowed down and looked at it. You saw the thought behind what you
+              were feeling. And for a moment, you stepped back from it.
+            </Text>
+            <Text style={styles.integrateText}>That’s why things felt lighter.</Text>
+            <Text style={styles.integrateText}>
+              Not because the situation changed — but because you were no longer
+              fully inside the thought.
+            </Text>
+
+            <Text style={styles.integrateTitle}>Why this works</Text>
+            <Text style={styles.integrateText}>
+              When a thought feels real, your body reacts as if it’s true. When you
+              see it clearly, that reaction softens. Nothing needed to be fixed.
+              You just saw what was happening.
+            </Text>
+
+            <Text style={styles.integrateTitle}>What to remember</Text>
+            <Text style={styles.integrateBullet}>
+              • The feeling is real — but the thought behind it isn’t always true
+            </Text>
+            <Text style={styles.integrateBullet}>
+              • Clarity comes from seeing, not fixing
+            </Text>
+            <Text style={styles.integrateBullet}>
+              • You are not your thoughts — you’re the one noticing them
+            </Text>
+
+            <Text style={styles.integrateClosing}>
+              You can return to this whenever the thought comes back.
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleRestart}>
-            <Text style={styles.buttonText}>Start Again</Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => setScreen("result")}
+            >
+              <Text style={styles.secondaryButtonText}>Back</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.button} onPress={handleRestart}>
+              <Text style={styles.buttonText}>Start Again</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (screen === "loading" || loading) {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
+          <Text style={styles.title}>Analyzing clarity...</Text>
+          <Text style={styles.subtitle}>
+            Stay here for a moment while your reflection is processed.
+          </Text>
+
+          <View style={styles.loadingScreenBox}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.loadingText}>Analyzing clarity...</Text>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (screen === "intro") {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
+          <Text style={styles.title}>What’s on your mind or heart?</Text>
+          <Text style={styles.subtitle}>
+            It guides you to identify what you’re feeling, notice the thought
+            behind it, create distance from it, and return to peace.
+          </Text>
+
+          <TouchableOpacity style={styles.button} onPress={startFlow}>
+            <Text style={styles.buttonText}>Let&apos;s begin</Text>
           </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (screen === "breathe") {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
+          <Text style={styles.title}>Breathe</Text>
+          <Text style={styles.subtitle}>
+            Settle first. Then reflect more clearly.
+          </Text>
+
+          <View style={styles.progressRow}>
+            <Text style={styles.progressText}>Step 1 of 5</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: "20%" }]} />
+            </View>
+          </View>
+
+          <View style={styles.breathingPanel}>
+            <Animated.Text
+              style={[
+                styles.breathingGuide,
+                {
+                  opacity: breathGuideOpacity,
+                },
+              ]}
+            >
+              Take five slow breaths.
+            </Animated.Text>
+
+            <Text style={styles.breathingLabel}>Breath Cue</Text>
+
+            <View style={styles.breathVisualWrap}>
+              <Animated.View
+                style={[
+                  styles.breathCircle,
+                  {
+                    opacity: breathingComplete ? 0.18 : breathWordOpacity,
+                    transform: [{ scale: breathCircleScale }],
+                  },
+                ]}
+              />
+
+              {!breathingComplete ? (
+                <Animated.Text
+                  style={[
+                    styles.breathingWord,
+                    {
+                      opacity: breathWordOpacity,
+                      transform: [{ scale: breathWordScale }],
+                    },
+                  ]}
+                >
+                  {currentBreathLabel}
+                </Animated.Text>
+              ) : (
+                <Animated.View
+                  style={[
+                    styles.breathingDoneWrap,
+                    { opacity: breathingDoneOpacity },
+                  ]}
+                >
+                  <Text style={styles.breathingDoneTitle}>You’re ready</Text>
+                  <Text style={styles.breathingDoneText}>
+                    Take this steadiness into the questions.
+                  </Text>
+                </Animated.View>
+              )}
+            </View>
+
+            <Text style={styles.breathingSubtext}>
+              {breathingComplete
+                ? "You’ve completed 5 breaths. Click Next."
+                : "Follow the word on the screen."}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={() => {
+              setBreathingComplete(true);
+              setBreathIndex(BREATH_SEQUENCE.length - 1);
+            }}
+          >
+            <Text style={styles.skipButtonText}>Skip for testing</Text>
+          </TouchableOpacity>
+
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleBack}
+            >
+              <Text style={styles.secondaryButtonText}>Back</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.button,
+                !breathingComplete && styles.buttonDisabled,
+              ]}
+              onPress={handleBreathingNext}
+              disabled={!breathingComplete}
+            >
+              <Text style={styles.buttonText}>Next</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     );
@@ -342,11 +690,11 @@ export default function HomeScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.eyebrow}>THOUGHTCLARITY</Text>
-        <Text style={styles.title}>See the thought clearly.</Text>
+        <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
+        <Text style={styles.title}>Reflect</Text>
         <Text style={styles.subtitle}>
-          Move through six reflective questions. Then the engine separates direct
-          experience from mind story and gives you a cleaner read.
+          Answer what comes up. There are no right or wrong answers. Move slowly.
+          You don’t need the perfect words.
         </Text>
 
         <View style={styles.progressRow}>
@@ -356,98 +704,49 @@ export default function HomeScreen() {
               style={[
                 styles.progressFill,
                 {
-                  width: `${(currentStep.progressNumber / 6) * 100}%`,
+                  width: `${(currentQuestion.progressNumber / 6) * 100}%`,
                 },
               ]}
             />
           </View>
         </View>
 
-        <View
-          style={
-            currentStep.type === "action" || currentStep.type === "breathing"
-              ? styles.actionBox
-              : styles.questionBox
-          }
-        >
-          <Text style={styles.questionLabel}>{currentStep.label}</Text>
-          <Text
-            style={
-              currentStep.type === "action" || currentStep.type === "breathing"
-                ? styles.actionText
-                : styles.questionText
-            }
-          >
-            {currentStep.text}
-          </Text>
+        <View style={styles.questionBox}>
+          <Text style={styles.questionLabel}>{currentQuestion.label}</Text>
+          <Text style={styles.questionText}>{currentQuestion.text}</Text>
+          <Text style={styles.exampleText}>{currentQuestion.example}</Text>
         </View>
 
-        {currentStep.type === "question" ? (
-          <TextInput
-            style={styles.input}
-            placeholder="Type your answer here..."
-            placeholderTextColor="#7A7F8A"
-            multiline
-            value={input}
-            onChangeText={setInput}
-            textAlignVertical="top"
-          />
-        ) : currentStep.type === "action" ? (
-          <View style={styles.actionInstructionBox}>
-            <Text style={styles.actionInstructionText}>
-              When you are ready to begin the 3 breaths, click the button below.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.breathingPanel}>
-            <Text style={styles.breathingLabel}>Breath Cue</Text>
-            <Text style={styles.breathingWord}>{currentBreathLabel}</Text>
-            <Text style={styles.breathingSubtext}>
-              {breathingComplete
-                ? "You’ve completed 3 breaths. Click Next."
-                : "Follow the word on the screen."}
-            </Text>
-          </View>
-        )}
+        <TextInput
+          style={styles.input}
+          placeholder="Type your answer here..."
+          placeholderTextColor="#7A7F8A"
+          multiline
+          value={input}
+          onChangeText={setInput}
+          textAlignVertical="top"
+        />
 
-        {loading ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator />
-            <Text style={styles.loadingText}>Analyzing clarity...</Text>
-          </View>
-        ) : (
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={[styles.secondaryButton, step === 0 && styles.buttonDisabled]}
-              onPress={handleBack}
-              disabled={step === 0}
-            >
-              <Text style={styles.secondaryButtonText}>Back</Text>
-            </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={handleBack}
+          >
+            <Text style={styles.secondaryButtonText}>Back</Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.button,
-                ((currentStep.type === "question" && !input.trim()) ||
-                  (currentStep.type === "breathing" && !breathingComplete)) &&
-                  styles.buttonDisabled,
-              ]}
-              onPress={handleNext}
-              disabled={
-                (currentStep.type === "question" && !input.trim()) ||
-                (currentStep.type === "breathing" && !breathingComplete)
-              }
-            >
-              <Text style={styles.buttonText}>
-                {currentStep.type === "action"
-                  ? "I am ready"
-                  : isLastStep
-                  ? "Generate Clarity"
-                  : "Next"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          <TouchableOpacity
+            style={[styles.button, !input.trim() && styles.buttonDisabled]}
+            onPress={handleNextQuestion}
+            disabled={!input.trim()}
+          >
+            <Text style={styles.buttonText}>
+              {questionIndex === QUESTIONS.length - 1
+                ? "Generate Clarity"
+                : "Next"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
@@ -459,14 +758,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#0B0D12",
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: 20,
   },
   card: {
     width: "100%",
     maxWidth: 760,
     backgroundColor: "#151922",
     borderRadius: 28,
-    padding: 24,
+    padding: 20,
     shadowColor: "#000",
     shadowOpacity: 0.25,
     shadowRadius: 20,
@@ -477,12 +776,12 @@ const styles = StyleSheet.create({
     color: "#7C8BFF",
     fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 1.6,
+    letterSpacing: 1.4,
     marginBottom: 10,
   },
   title: {
     color: "#F5F7FB",
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: "800",
     marginBottom: 10,
   },
@@ -490,10 +789,10 @@ const styles = StyleSheet.create({
     color: "#A8B0BD",
     fontSize: 15,
     lineHeight: 22,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   progressRow: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   progressText: {
     color: "#A8B0BD",
@@ -518,16 +817,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#232938",
     borderRadius: 18,
-    padding: 18,
-    marginBottom: 16,
-  },
-  actionBox: {
-    backgroundColor: "#171D2B",
-    borderWidth: 1,
-    borderColor: "#7C8BFF",
-    borderRadius: 20,
-    padding: 22,
-    marginBottom: 16,
+    padding: 16,
+    marginBottom: 14,
   },
   questionLabel: {
     color: "#7C8BFF",
@@ -540,69 +831,18 @@ const styles = StyleSheet.create({
   questionText: {
     color: "#F5F7FB",
     fontSize: 20,
-    fontWeight: "700",
-    lineHeight: 28,
-  },
-  actionText: {
-    color: "#F5F7FB",
-    fontSize: 24,
     fontWeight: "800",
-    lineHeight: 34,
-  },
-  actionInstructionBox: {
-    minHeight: 160,
-    backgroundColor: "#0F131B",
-    borderWidth: 1,
-    borderColor: "#232938",
-    borderRadius: 18,
-    padding: 20,
-    marginBottom: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionInstructionText: {
-    color: "#E8ECF3",
-    fontSize: 18,
-    fontWeight: "700",
     lineHeight: 28,
-    textAlign: "center",
+    marginBottom: 10,
   },
-  breathingPanel: {
-    minHeight: 160,
-    backgroundColor: "#0F131B",
-    borderWidth: 1,
-    borderColor: "#232938",
-    borderRadius: 18,
-    padding: 20,
-    marginBottom: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  breathingLabel: {
-    color: "#7C8BFF",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginBottom: 14,
-  },
-  breathingWord: {
-    color: "#F5F7FB",
-    fontSize: 40,
-    fontWeight: "800",
-    lineHeight: 48,
-    marginBottom: 14,
-    textAlign: "center",
-  },
-  breathingSubtext: {
-    color: "#E8ECF3",
-    fontSize: 16,
-    fontWeight: "600",
-    lineHeight: 24,
-    textAlign: "center",
+  exampleText: {
+    color: "#A8B0BD",
+    fontSize: 15,
+    lineHeight: 22,
+    fontStyle: "italic",
   },
   input: {
-    minHeight: 160,
+    minHeight: 120,
     backgroundColor: "#0F131B",
     borderWidth: 1,
     borderColor: "#232938",
@@ -610,7 +850,95 @@ const styles = StyleSheet.create({
     padding: 16,
     color: "#F5F7FB",
     fontSize: 16,
-    marginBottom: 18,
+    marginBottom: 16,
+  },
+  breathingPanel: {
+    minHeight: 270,
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  breathingGuide: {
+    color: "#A8B0BD",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 14,
+    textAlign: "center",
+  },
+  breathingLabel: {
+    color: "#7C8BFF",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  breathVisualWrap: {
+    width: 220,
+    height: 165,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  breathCircle: {
+    position: "absolute",
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: "#7C8BFF",
+  },
+  breathingWord: {
+    color: "#FFFFFF",
+    fontSize: 42,
+    fontWeight: "800",
+    lineHeight: 48,
+    textAlign: "center",
+  },
+  breathingDoneWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  breathingDoneTitle: {
+    color: "#F5F7FB",
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  breathingDoneText: {
+    color: "#C9D2E3",
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+  },
+  breathingSubtext: {
+    color: "#DCE2F0",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 21,
+    textAlign: "center",
+  },
+  skipButton: {
+    marginTop: 10,
+    marginBottom: 12,
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skipButtonText: {
+    color: "#E8ECF3",
+    fontSize: 14,
+    fontWeight: "800",
   },
   buttonRow: {
     flexDirection: "row",
@@ -622,9 +950,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
+    justifyContent: "center",
   },
   secondaryButton: {
     width: 120,
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryActionButton: {
+    marginTop: 12,
     backgroundColor: "#0F131B",
     borderWidth: 1,
     borderColor: "#232938",
@@ -640,17 +979,24 @@ const styles = StyleSheet.create({
     color: "#0B0D12",
     fontSize: 16,
     fontWeight: "800",
+    textAlign: "center",
+    paddingHorizontal: 12,
   },
   secondaryButtonText: {
     color: "#E8ECF3",
     fontSize: 15,
     fontWeight: "700",
   },
-  loadingBox: {
-    paddingVertical: 18,
+  secondaryActionButtonText: {
+    color: "#E8ECF3",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  loadingScreenBox: {
+    minHeight: 220,
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 14,
   },
   loadingText: {
     color: "#A8B0BD",
@@ -664,6 +1010,14 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
   },
+  miniSection: {
+    backgroundColor: "#0E121A",
+    borderWidth: 1,
+    borderColor: "#1D2331",
+    borderRadius: 14,
+    padding: 13,
+    marginBottom: 10,
+  },
   sectionTitle: {
     color: "#7C8BFF",
     fontSize: 13,
@@ -673,16 +1027,17 @@ const styles = StyleSheet.create({
   },
   sectionText: {
     color: "#E8ECF3",
-    fontSize: 15,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 23,
   },
   anchorBox: {
     backgroundColor: "#171D2B",
     borderWidth: 1,
     borderColor: "#7C8BFF",
     borderRadius: 20,
-    padding: 22,
-    marginBottom: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    marginBottom: 12,
   },
   anchorLabel: {
     color: "#AEB8FF",
@@ -694,47 +1049,72 @@ const styles = StyleSheet.create({
   },
   anchorText: {
     color: "#F5F7FB",
-    fontSize: 24,
+    fontSize: 21,
     fontWeight: "800",
     textAlign: "center",
-    lineHeight: 32,
+    lineHeight: 29,
   },
-  reminderBox: {
-    backgroundColor: "#121A28",
+  softBox: {
+    backgroundColor: "#111726",
     borderWidth: 1,
-    borderColor: "#8FA8FF",
-    borderRadius: 20,
-    padding: 22,
-    marginBottom: 16,
+    borderColor: "#2A3247",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
   },
-  reminderLabel: {
-    color: "#C5D0FF",
+  softLabel: {
+    color: "#AEB8FF",
     fontSize: 12,
     fontWeight: "700",
-    marginBottom: 10,
+    marginBottom: 8,
     textTransform: "uppercase",
-    textAlign: "center",
   },
-  reminderText: {
-    color: "#F5F7FB",
-    fontSize: 20,
+  softText: {
+    color: "#E8ECF3",
+    fontSize: 15,
     fontWeight: "700",
-    textAlign: "center",
-    lineHeight: 30,
+    lineHeight: 22,
   },
-  noticeBox: {
-    backgroundColor: "#171D2B",
+  noticeHelperText: {
+    color: "#B8C1D6",
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+    marginTop: 2,
+    marginBottom: 16,
+  },
+  integrateBox: {
+    backgroundColor: "#0F131B",
     borderWidth: 1,
-    borderColor: "#AEB8FF",
-    borderRadius: 20,
-    padding: 22,
+    borderColor: "#232938",
+    borderRadius: 18,
+    padding: 18,
     marginBottom: 20,
   },
-  noticeText: {
-    color: "#F5F7FB",
-    fontSize: 24,
+  integrateTitle: {
+    color: "#7C8BFF",
+    fontSize: 14,
     fontWeight: "800",
-    textAlign: "center",
-    lineHeight: 32,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  integrateText: {
+    color: "#E8ECF3",
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 10,
+  },
+  integrateBullet: {
+    color: "#E8ECF3",
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  integrateClosing: {
+    color: "#F5F7FB",
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 22,
+    marginTop: 10,
   },
 });
