@@ -51,29 +51,6 @@ Be calm, precise, minimal, and psychologically accurate.
 Here are the user's answers:
 ${answers.map((a, i) => `Q${i + 1}: ${a}`).join("\n")}
 
-Return plain text only in exactly this structure:
-
-PROMPT_VERSION_RETURN_V9
-REFLECTION
-[content]
-
-FACT
-[content]
-
-MIND STORY
-[content]
-
-CLARITY ANCHOR
-[content]
-
-REMINDER
-[content]
-
-ONE SMALL ACTION
-[content]
-
-SECTION RULES
-
 REFLECTION
 - Briefly summarize what feels heavy, what the user is carrying, and the emotional pattern showing up.
 - This may include emotions, sensations, and what the mind is doing internally.
@@ -121,6 +98,7 @@ CLARITY ANCHOR
   "saying [full sentence]"
 - Do NOT use long literal event wording like:
   "the psychologist saying my app doesn't make sense"
+- Do NOT use awkward event phrases copied directly from speech if a cleaner noun phrase is available.
 
 PREFERRED FORM
 - Prefer this form first:
@@ -132,6 +110,7 @@ PREFERRED FORM
 
 EVENT PHRASE RULES
 - Compress the event into a short natural phrase.
+- Prefer noun-based event phrases, not long quoted speech.
 - Examples of clean event phrases:
   "the psychologist's feedback"
   "her feedback about the app"
@@ -185,13 +164,35 @@ GLOBAL RULES
 - No emotional coddling.
 - No generic wrap-up.
 - Keep each section short and sharp.
-- The Clarity Anchor should sound strong enough to remember when the thought returns.
-- The Reminder should sound grounding enough to interrupt spiraling and bring the person back to what is real now.
 - FACT must contain only external facts, never internal experience.
 - The Clarity Anchor must be understandable in one read.
 - Prefer short clean event phrases over literal sentence copying.
 - If the anchor sounds clunky, rewrite it shorter and smoother.
-- If the CLARITY ANCHOR sounds like reassurance or self-protection, rewrite it until it sounds purely observational.`;
+- If the CLARITY ANCHOR sounds like reassurance or self-protection, rewrite it until it sounds purely observational.
+
+Return plain text only in exactly this structure:
+
+PROMPT_VERSION_RETURN_V9
+REFLECTION
+[content]
+
+FACT
+[content]
+
+MIND STORY
+[content]
+
+CLARITY ANCHOR
+[content]
+
+REMINDER
+[content]
+
+ONE SMALL ACTION
+[content]
+
+Do not output any other heading, label, note, explanation, or extra text before or after these sections.
+Do not output the words "SECTION RULES".`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-5.2",
