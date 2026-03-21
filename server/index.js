@@ -96,8 +96,14 @@ MIND STORY
 - Keep it short and direct.
 
 CLARITY ANCHOR
-- Write exactly one sentence.
-- The anchor must describe the mechanism of the mind, not rebut or soothe the thought.
+- Write exactly one or two short sentences.
+- The anchor must be instantly readable in one pass.
+- It must clearly separate:
+  1. what happened
+  2. the story added by the mind
+- Keep the meaning, but simplify the wording.
+- Do NOT copy the user's wording too literally if it sounds awkward.
+- Do NOT make it wordy, tangled, or grammatically rough.
 - Do NOT reassure, defend, soften, argue against, or correct the thought.
 - Do NOT use phrases like:
   "does not define"
@@ -109,32 +115,51 @@ CLARITY ANCHOR
   "your worth"
   "my value"
   "your value"
-- Do NOT use encouragement language.
-- Do NOT use protective identity language.
-- Do NOT output therapy-style reassurance.
-- Do NOT mention worth, value, intelligence, ability, success, goodness, or identity unless those exact words appeared in the user's self-judgment.
-- First identify:
-  event = what happened
-  self_judgment = the user's conclusion about self
-- Then output the anchor using ONLY one of these exact forms:
-  My mind is turning [event] into "[self_judgment]."
-  My mind is treating [event] like proof that "[self_judgment]."
-  The feeling is real. The thought "[self_judgment]" is added.
-  One [event] happened. The thought "[self_judgment]" is extra.
-- Use the user's actual self-judgment words when possible.
-- Do not use any other sentence structure.
+- Do NOT use the phrase:
+  "treating [event] like proof that"
+- Do NOT use the phrase:
+  "saying [full sentence]"
+- Do NOT use long literal event wording like:
+  "the psychologist saying my app doesn't make sense"
 
-GOOD CLARITY ANCHOR EXAMPLES
-- My mind is turning one person’s opinion about the app into "I am not intelligent."
-- My mind is treating this feedback like proof that "I am failing."
-- The feeling is real. The thought "I am not good enough" is added.
-- One difficult conversation happened. The thought "I am unsafe" is extra.
+PREFERRED FORM
+- Prefer this form first:
+  [clean event phrase] is real. The story "[self_judgment]" is added.
+- Second choice:
+  My mind is using [clean event phrase] to tell the story: "[self_judgment]"
+- Third choice:
+  My mind is turning [clean event phrase] into: "[self_judgment]"
 
-BAD CLARITY ANCHOR EXAMPLES
-- One person’s opinion does not define your intelligence or worth.
-- This does not mean you are failing.
-- You are still worthy.
-- Your fear is lying to you.
+EVENT PHRASE RULES
+- Compress the event into a short natural phrase.
+- Examples of clean event phrases:
+  "the psychologist's feedback"
+  "her feedback about the app"
+  "one comment"
+  "this conversation"
+  "that delay"
+  "one mistake"
+- Use nouns like:
+  feedback, comment, response, conversation, delay, mistake
+- Avoid long verb-heavy phrases.
+
+SELF-JUDGMENT RULES
+- Keep the self-judgment inside quotation marks.
+- If there are two judgments, split them into two short sentences inside the quote.
+- Example:
+  "I am a failure. I am not smart."
+
+GOOD EXAMPLES
+- The psychologist's feedback is real. The story "I am a failure. I am not smart." is added.
+- Her feedback about the app is real. The story "I am not good enough" is added.
+- My mind is using one comment to tell the story: "I am failing."
+- My mind is turning that delay into: "I cannot handle life."
+
+BAD EXAMPLES
+- My mind is treating the psychologist saying my app doesn’t make sense like proof that "I am a failure, I am not smart."
+- My mind is treating her saying the app doesn’t make sense like proof that "I am a failure, I am not smart."
+- One person’s opinion does not define my intelligence or worth.
+- This does not mean I am failing.
 
 REMINDER
 - Write one short grounding reminder that returns the user to present-moment reality.
@@ -163,6 +188,9 @@ GLOBAL RULES
 - The Clarity Anchor should sound strong enough to remember when the thought returns.
 - The Reminder should sound grounding enough to interrupt spiraling and bring the person back to what is real now.
 - FACT must contain only external facts, never internal experience.
+- The Clarity Anchor must be understandable in one read.
+- Prefer short clean event phrases over literal sentence copying.
+- If the anchor sounds clunky, rewrite it shorter and smoother.
 - If the CLARITY ANCHOR sounds like reassurance or self-protection, rewrite it until it sounds purely observational.`;
 
     const completion = await openai.chat.completions.create({
