@@ -626,7 +626,7 @@ export default function HomeScreen() {
             <Text style={styles.infoText}>Exhale through the mouth.</Text>
             <Text style={styles.infoSpacer}> </Text>
             <Text style={styles.infoText}>
-              Did you know? A longer exhale can help calm the vagus nerve.
+              Did you know? A longer exhale can help your nervous system settle and relax.
             </Text>
             <Text style={styles.infoSpacer}> </Text>
             <Text style={styles.infoText}>
