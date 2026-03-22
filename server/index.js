@@ -40,12 +40,12 @@ const HEADING_ALIASES = {
 };
 
 const ALLOWED_ACTIONS = new Set([
+  "Drop your shoulders and relax your face.",
+  "Take one slow breath.",
+  "Feel your feet on the ground.",
+  "Look around and name 3 things you can see.",
   "Unclench your jaw.",
-  "Drop your shoulders.",
-  "Feel both feet on the floor.",
-  "Look around and name 3 objects.",
-  "Take one sip of water.",
-  "Soften your belly.",
+  "Put one hand on your chest and breathe slowly.",
 ]);
 
 function escapeRegex(str) {
@@ -150,34 +150,16 @@ function ensureCanonicalOrder(result) {
 
 function violatesActionRules(actionBlock) {
   const line = firstMeaningfulLine(actionBlock);
-  const a = line.toLowerCase();
 
   if (!line) return true;
-
-  const forbidden = [
-    "breath",
-    "breathe",
-    "inhale",
-    "exhale",
-    "minute",
-    "minutes",
-    "until you feel",
-    "until you",
-    "recenter",
-    "center",
-    "relax",
-    "calm down",
-  ];
-
-  if (forbidden.some((w) => a.includes(w))) return true;
-  if (line.length > 80) return true;
+  if (line.length > 120) return true;
   if (!ALLOWED_ACTIONS.has(line)) return true;
 
   return false;
 }
 
 function pickFallbackAction() {
-  return "Drop your shoulders.";
+  return "Feel your feet on the ground.";
 }
 
 function enforceOneSmallAction(result) {
@@ -221,6 +203,7 @@ function enforceFactsAreExternal(result) {
   const bannedPhrases = [
     "tightness",
     "chest",
+    "stomach feels",
     "body feels",
     "you feel",
     "you are aware",
@@ -233,8 +216,15 @@ function enforceFactsAreExternal(result) {
     "overwhelm",
     "despond",
     "emotion",
+    "emotions",
     "feeling",
+    "feelings",
     "sensation",
+    "panic",
+    "unsafe",
+    "heavy",
+    "stress",
+    "stressed",
   ];
 
   const cleaned = lines.filter((line) => {
@@ -277,7 +267,7 @@ function enforceReminderCleanup(result) {
   let reminder = cleanInlineSpacing(firstMeaningfulLine(reminderBlock));
 
   if (!reminder) {
-    reminder = "Right now you are safe in this moment.";
+    reminder = "Right now you are here, holding your phone.";
   }
 
   const sentences = splitIntoSentences(reminder);
@@ -289,6 +279,24 @@ function enforceReminderCleanup(result) {
   }
 
   return replaceSection(result, "REMINDER", reminder);
+}
+
+function enforceAnchorCleanup(result) {
+  const anchorBlock = extractSection(result, "CLARITY ANCHOR");
+  if (!anchorBlock) return result;
+
+  let cleaned = cleanInlineSpacing(anchorBlock);
+
+  cleaned = cleaned
+    .replace(/treating .*? like proof that/gi, "using this like proof that")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  const sentences = splitIntoSentences(cleaned).slice(0, 2);
+  if (sentences.length === 0) return result;
+
+  const finalAnchor = sentences.map(ensureSentenceEnd).join(" ");
+  return replaceSection(result, "CLARITY ANCHOR", finalAnchor);
 }
 
 function enforcePromptVersionFirstLine(result) {
@@ -344,10 +352,21 @@ ${answers.map((a, i) => `Q${i + 1}: ${a}`).join("\n")}
 
 REFLECTION
 - Briefly summarize what feels heavy, what the user is carrying, and the emotional pattern showing up.
-- This may include emotions, sensations, and what the mind is doing internally.
-- Keep it concise and specific to the user's actual words.
-- Do not infer motives (“trying to explain why you’re like this”).
-- Prefer describing what they reported: “your mind is scanning for more evidence” is okay if they literally said that; otherwise simplify.
+- This may include emotions, body sensations, and what the mind is doing internally.
+- Write exactly 1 or 2 short sentences.
+- Keep the language natural, plain, and easy to read in one pass.
+- Stay close to the user's actual words, but rewrite awkward phrasing into smoother language.
+- Do not infer motives or add psychological explanations.
+- Do not sound clinical, therapeutic, or abstract.
+- If the mind is looking for more proof, say it simply:
+  "your mind is pulling up more proof"
+  or
+  "your mind is pulling up other moments that match it"
+- Avoid awkward phrasing like:
+  "landed as"
+  "scanning for more examples"
+  "evidence of failure"
+- Keep it specific, grounded, and human.
 
 FACT
 - List only simple observable or externally reportable facts.
@@ -357,7 +376,8 @@ FACT
   "You are noticing failure thoughts."
   "You feel despondent."
 - Only include concrete events, actions, circumstances, or reported statements.
-- Keep this section plain and stripped down.
+- Keep this section simple, short, clean, and objective.
+- Do not make it fluffy.
 
 MIND STORY
 - Name the interpretation, identity conclusion, or meaning the mind is adding on top.
@@ -367,13 +387,13 @@ MIND STORY
 
 CLARITY ANCHOR
 - Write exactly one or two short sentences.
-- The anchor must be instantly readable in one pass.
+- The anchor must feel like a real insight, not just a paraphrase.
 - It must clearly separate:
   1. what happened
-  2. the story added by the mind
-- Keep the meaning, but simplify the wording.
-- Do NOT copy the user's wording too literally if it sounds awkward.
-- Do NOT make it wordy, tangled, or grammatically rough.
+  2. the story the mind added
+- Keep it specific to the user's actual situation.
+- Make it sharp, clear, and instantly readable in one pass.
+- Do NOT make it generic, vague, or padded.
 - Do NOT reassure, defend, soften, argue against, or correct the thought.
 - Do NOT use phrases like:
   "does not define"
@@ -434,31 +454,30 @@ BAD EXAMPLES
 - This does not mean I am failing.
 
 REMINDER
-- Write one short grounding reminder that returns the user to present-moment reality.
-- This should help the user notice that they are here now, not inside the imagined future.
-- Prefer concrete, immediate language.
+- Write exactly one short grounding sentence.
+- Return the user to immediate present-moment reality, not the imagined future.
+- Use concrete, physical, ordinary language.
+- Keep it clean, direct, and easy to read in one pass.
+- Prefer 6–12 words.
 - Good reminders sound like:
-  "Right now you are safe in this room."
-  "You are here, breathing, holding your phone."
-  "Nothing dangerous is happening in this moment."
-- Keep it short, clear, grounded, and real.
-- Do not make it poetic, vague, or overly spiritual.
+  "Right now you are here, holding your phone."
+  "Nothing dangerous is happening right now."
+  "You are here in this room right now."
+- Do not make it poetic, vague, spiritual, comforting, or explanatory.
+- Do not mention the future, meaning, worth, or identity.
+- Do not write more than one sentence.
 
 ONE SMALL ACTION
-- Output exactly ONE action as ONE short sentence.
-- Must take under 10 seconds.
-- Do NOT use the words: breathe, breath, inhale, exhale.
-- Do NOT mention minutes, timing, or “until you feel…”.
-- Do NOT give self-regulation advice like “relax” or “center”.
-- If the user’s suggested action is vague (e.g., “relax”, “calm down”, “center”, “recenter”), DO NOT reuse it.
-- If the user suggests breathing, DO NOT reuse it.
-- Choose ONE from this allowed set (output exactly one line, no bullets, no quotes):
+- Output exactly ONE grounded, natural action as ONE short sentence.
+- It should feel physically immediate and realistic, not random.
+- Keep it simple, embodied, and easy to do right now.
+- Choose ONE from this allowed set exactly as written:
+  Drop your shoulders and relax your face.
+  Take one slow breath.
+  Feel your feet on the ground.
+  Look around and name 3 things you can see.
   Unclench your jaw.
-  Drop your shoulders.
-  Feel both feet on the floor.
-  Look around and name 3 objects.
-  Take one sip of water.
-  Soften your belly.
+  Put one hand on your chest and breathe slowly.
 
 GLOBAL RULES
 - No markdown symbols like ### or **.
@@ -515,6 +534,7 @@ Do not output the words "SECTION RULES".`;
     result = enforceFactsAreExternal(result);
     result = enforceReflectionCleanup(result);
     result = enforceReminderCleanup(result);
+    result = enforceAnchorCleanup(result);
 
     const actionEnforcement = enforceOneSmallAction(result);
     result = actionEnforcement.result;
@@ -529,7 +549,7 @@ Do not output the words "SECTION RULES".`;
         action_before: actionEnforcement.debug.action_before,
         action_after: actionEnforcement.debug.action_after,
         enforced: actionEnforcement.debug.enforced,
-        commit_hint: "RETURN_ACTION_ENFORCER_V3",
+        commit_hint: "RETURN_ACTION_ENFORCER_V4",
       },
     });
   } catch (error) {
