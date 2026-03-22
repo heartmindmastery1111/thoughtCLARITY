@@ -26,11 +26,11 @@ const CANONICAL_HEADINGS = [
 ];
 
 const HEADING_ALIASES = {
-  "REFLECTION": ["REFLECTION"],
-  "FACT": ["FACT", "FACTS"],
+  REFLECTION: ["REFLECTION"],
+  FACT: ["FACT", "FACTS"],
   "MIND STORY": ["MIND STORY", "STORY", "MINDSTORY"],
   "CLARITY ANCHOR": ["CLARITY ANCHOR", "ANCHOR", "CLARITY"],
-  "REMINDER": ["REMINDER"],
+  REMINDER: ["REMINDER"],
   "ONE SMALL ACTION": [
     "ONE SMALL ACTION",
     "SMALL ACTION",
@@ -38,6 +38,15 @@ const HEADING_ALIASES = {
     "ONE ACTION",
   ],
 };
+
+const ALLOWED_ACTIONS = new Set([
+  "Unclench your jaw.",
+  "Drop your shoulders.",
+  "Feel both feet on the floor.",
+  "Look around and name 3 objects.",
+  "Take one sip of water.",
+  "Soften your belly.",
+]);
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -52,15 +61,37 @@ function normalizeNewlines(text) {
   return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+function cleanInlineSpacing(text) {
+  return String(text || "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .trim();
+}
+
+function splitIntoSentences(text) {
+  return cleanInlineSpacing(text)
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function ensureSentenceEnd(text) {
+  const t = cleanInlineSpacing(text);
+  if (!t) return "";
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+function firstMeaningfulLine(block) {
+  return String(block || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean) || "";
+}
+
 function findSectionMatch(result, heading) {
   const text = normalizeNewlines(result);
   const headingPattern = getHeadingPattern(heading);
 
-  // Matches:
-  // HEADING
-  // content...
-  //
-  // until next recognized ALL CAPS heading or end
   const re = new RegExp(
     `(^|\\n)\\s*(${headingPattern})\\s*\\n+([\\s\\S]*?)(?=\\n\\s*(?:${CANONICAL_HEADINGS
       .map((h) => getHeadingPattern(h))
@@ -81,25 +112,28 @@ function replaceSection(result, heading, newContent) {
   const match = findSectionMatch(text, heading);
 
   if (!match) {
-    // If missing entirely, append canonical heading at the end.
     const trimmed = text.trimEnd();
     return `${trimmed}\n\n${heading}\n${newContent}\n`;
   }
 
   const fullMatch = match[0];
   const matchedHeading = match[2];
-  const replacement = `${fullMatch.startsWith("\n") ? "\n" : ""}${matchedHeading}\n${newContent}\n`;
+  const prefix = fullMatch.startsWith("\n") ? "\n" : "";
+  const replacement = `${prefix}${matchedHeading}\n${newContent}\n`;
 
   return text.replace(fullMatch, replacement);
 }
 
 function ensureCanonicalOrder(result) {
   const text = normalizeNewlines(result);
-
   const firstLine = text.split("\n")[0]?.trim() || "";
   const pieces = [];
 
-  pieces.push(firstLine === "PROMPT_VERSION_RETURN_V9" ? firstLine : "PROMPT_VERSION_RETURN_V9");
+  pieces.push(
+    firstLine === "PROMPT_VERSION_RETURN_V9"
+      ? firstLine
+      : "PROMPT_VERSION_RETURN_V9"
+  );
 
   for (const heading of CANONICAL_HEADINGS) {
     const content = extractSection(text, heading);
@@ -113,13 +147,6 @@ function ensureCanonicalOrder(result) {
 // --------------------
 // Rule enforcement
 // --------------------
-
-function firstMeaningfulLine(block) {
-  return String(block || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean) || "";
-}
 
 function violatesActionRules(actionBlock) {
   const line = firstMeaningfulLine(actionBlock);
@@ -143,20 +170,8 @@ function violatesActionRules(actionBlock) {
   ];
 
   if (forbidden.some((w) => a.includes(w))) return true;
-
   if (line.length > 80) return true;
-
-  const allowedSet = new Set([
-    "Unclench your jaw.",
-    "Drop your shoulders.",
-    "Feel both feet on the floor.",
-    "Look around and name 3 objects.",
-    "Take one sip of water.",
-    "Soften your belly.",
-  ]);
-
-  // If you want absolute enforcement, only allow exact allowed-set outputs.
-  if (!allowedSet.has(line)) return true;
+  if (!ALLOWED_ACTIONS.has(line)) return true;
 
   return false;
 }
@@ -166,7 +181,9 @@ function pickFallbackAction() {
 }
 
 function enforceOneSmallAction(result) {
-  const actionBefore = firstMeaningfulLine(extractSection(result, "ONE SMALL ACTION"));
+  const actionBefore = firstMeaningfulLine(
+    extractSection(result, "ONE SMALL ACTION")
+  );
   const fallback = pickFallbackAction();
 
   let enforced = false;
@@ -178,7 +195,6 @@ function enforceOneSmallAction(result) {
     nextResult = replaceSection(result, "ONE SMALL ACTION", actionAfter);
     enforced = true;
   } else {
-    // Normalize to exactly one line even if valid.
     actionAfter = actionBefore;
     nextResult = replaceSection(result, "ONE SMALL ACTION", actionAfter);
   }
@@ -235,6 +251,46 @@ function enforceFactsAreExternal(result) {
   return result;
 }
 
+function enforceReflectionCleanup(result) {
+  const reflectionBlock = extractSection(result, "REFLECTION");
+  if (!reflectionBlock) return result;
+
+  let cleaned = cleanInlineSpacing(reflectionBlock);
+
+  cleaned = cleaned
+    .replace(/fraud\s*\/\s*failed/gi, "fraud and failure")
+    .replace(/\(\s*including teaching\s*\)/gi, "including teaching")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  const sentences = splitIntoSentences(cleaned).slice(0, 2);
+  if (sentences.length === 0) return result;
+
+  const finalReflection = sentences.map(ensureSentenceEnd).join(" ");
+  return replaceSection(result, "REFLECTION", finalReflection);
+}
+
+function enforceReminderCleanup(result) {
+  const reminderBlock = extractSection(result, "REMINDER");
+  if (!reminderBlock) return result;
+
+  let reminder = cleanInlineSpacing(firstMeaningfulLine(reminderBlock));
+
+  if (!reminder) {
+    reminder = "Right now you are safe in this moment.";
+  }
+
+  const sentences = splitIntoSentences(reminder);
+  reminder = sentences[0] || reminder;
+  reminder = ensureSentenceEnd(reminder);
+
+  if (reminder.length > 110) {
+    reminder = "Right now you are here, holding your phone.";
+  }
+
+  return replaceSection(result, "REMINDER", reminder);
+}
+
 function enforcePromptVersionFirstLine(result) {
   const text = normalizeNewlines(result);
   const lines = text.split("\n");
@@ -246,6 +302,7 @@ function enforcePromptVersionFirstLine(result) {
 // --------------------
 // Route
 // --------------------
+
 app.post("/clarity", async (req, res) => {
   try {
     const { answers } = req.body;
@@ -456,6 +513,8 @@ Do not output the words "SECTION RULES".`;
 
     result = enforcePromptVersionFirstLine(result);
     result = enforceFactsAreExternal(result);
+    result = enforceReflectionCleanup(result);
+    result = enforceReminderCleanup(result);
 
     const actionEnforcement = enforceOneSmallAction(result);
     result = actionEnforcement.result;
@@ -470,7 +529,7 @@ Do not output the words "SECTION RULES".`;
         action_before: actionEnforcement.debug.action_before,
         action_after: actionEnforcement.debug.action_after,
         enforced: actionEnforcement.debug.enforced,
-        commit_hint: "RETURN_ACTION_ENFORCER_V2",
+        commit_hint: "RETURN_ACTION_ENFORCER_V3",
       },
     });
   } catch (error) {
