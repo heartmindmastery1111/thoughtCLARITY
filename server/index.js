@@ -12,6 +12,240 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// --------------------
+// Section parsing helpers
+// --------------------
+
+const CANONICAL_HEADINGS = [
+  "REFLECTION",
+  "FACT",
+  "MIND STORY",
+  "CLARITY ANCHOR",
+  "REMINDER",
+  "ONE SMALL ACTION",
+];
+
+const HEADING_ALIASES = {
+  "REFLECTION": ["REFLECTION"],
+  "FACT": ["FACT", "FACTS"],
+  "MIND STORY": ["MIND STORY", "STORY", "MINDSTORY"],
+  "CLARITY ANCHOR": ["CLARITY ANCHOR", "ANCHOR", "CLARITY"],
+  "REMINDER": ["REMINDER"],
+  "ONE SMALL ACTION": [
+    "ONE SMALL ACTION",
+    "SMALL ACTION",
+    "ACTION",
+    "ONE ACTION",
+  ],
+};
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getHeadingPattern(heading) {
+  const aliases = HEADING_ALIASES[heading] || [heading];
+  return aliases.map(escapeRegex).join("|");
+}
+
+function normalizeNewlines(text) {
+  return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function findSectionMatch(result, heading) {
+  const text = normalizeNewlines(result);
+  const headingPattern = getHeadingPattern(heading);
+
+  // Matches:
+  // HEADING
+  // content...
+  //
+  // until next recognized ALL CAPS heading or end
+  const re = new RegExp(
+    `(^|\\n)\\s*(${headingPattern})\\s*\\n+([\\s\\S]*?)(?=\\n\\s*(?:${CANONICAL_HEADINGS
+      .map((h) => getHeadingPattern(h))
+      .join("|")})\\s*\\n+|$)`,
+    "i"
+  );
+
+  return text.match(re);
+}
+
+function extractSection(result, heading) {
+  const match = findSectionMatch(result, heading);
+  return (match?.[3] || "").trim();
+}
+
+function replaceSection(result, heading, newContent) {
+  const text = normalizeNewlines(result);
+  const match = findSectionMatch(text, heading);
+
+  if (!match) {
+    // If missing entirely, append canonical heading at the end.
+    const trimmed = text.trimEnd();
+    return `${trimmed}\n\n${heading}\n${newContent}\n`;
+  }
+
+  const fullMatch = match[0];
+  const matchedHeading = match[2];
+  const replacement = `${fullMatch.startsWith("\n") ? "\n" : ""}${matchedHeading}\n${newContent}\n`;
+
+  return text.replace(fullMatch, replacement);
+}
+
+function ensureCanonicalOrder(result) {
+  const text = normalizeNewlines(result);
+
+  const firstLine = text.split("\n")[0]?.trim() || "";
+  const pieces = [];
+
+  pieces.push(firstLine === "PROMPT_VERSION_RETURN_V9" ? firstLine : "PROMPT_VERSION_RETURN_V9");
+
+  for (const heading of CANONICAL_HEADINGS) {
+    const content = extractSection(text, heading);
+    pieces.push(heading);
+    pieces.push(content || "");
+  }
+
+  return pieces.join("\n\n").trim() + "\n";
+}
+
+// --------------------
+// Rule enforcement
+// --------------------
+
+function firstMeaningfulLine(block) {
+  return String(block || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean) || "";
+}
+
+function violatesActionRules(actionBlock) {
+  const line = firstMeaningfulLine(actionBlock);
+  const a = line.toLowerCase();
+
+  if (!line) return true;
+
+  const forbidden = [
+    "breath",
+    "breathe",
+    "inhale",
+    "exhale",
+    "minute",
+    "minutes",
+    "until you feel",
+    "until you",
+    "recenter",
+    "center",
+    "relax",
+    "calm down",
+  ];
+
+  if (forbidden.some((w) => a.includes(w))) return true;
+
+  if (line.length > 80) return true;
+
+  const allowedSet = new Set([
+    "Unclench your jaw.",
+    "Drop your shoulders.",
+    "Feel both feet on the floor.",
+    "Look around and name 3 objects.",
+    "Take one sip of water.",
+    "Soften your belly.",
+  ]);
+
+  // If you want absolute enforcement, only allow exact allowed-set outputs.
+  if (!allowedSet.has(line)) return true;
+
+  return false;
+}
+
+function pickFallbackAction() {
+  return "Drop your shoulders.";
+}
+
+function enforceOneSmallAction(result) {
+  const actionBefore = firstMeaningfulLine(extractSection(result, "ONE SMALL ACTION"));
+  const fallback = pickFallbackAction();
+
+  let enforced = false;
+  let actionAfter = actionBefore;
+  let nextResult = result;
+
+  if (violatesActionRules(actionBefore)) {
+    actionAfter = fallback;
+    nextResult = replaceSection(result, "ONE SMALL ACTION", actionAfter);
+    enforced = true;
+  } else {
+    // Normalize to exactly one line even if valid.
+    actionAfter = actionBefore;
+    nextResult = replaceSection(result, "ONE SMALL ACTION", actionAfter);
+  }
+
+  return {
+    result: nextResult,
+    debug: {
+      action_before: actionBefore,
+      action_after: actionAfter,
+      enforced,
+    },
+  };
+}
+
+function enforceFactsAreExternal(result) {
+  const factBlock = extractSection(result, "FACT");
+  if (!factBlock) return result;
+
+  const lines = factBlock
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const bannedPhrases = [
+    "tightness",
+    "chest",
+    "body feels",
+    "you feel",
+    "you are aware",
+    "you notice",
+    "you are noticing",
+    "thought",
+    "thoughts",
+    "anxious",
+    "sad",
+    "overwhelm",
+    "despond",
+    "emotion",
+    "feeling",
+    "sensation",
+  ];
+
+  const cleaned = lines.filter((line) => {
+    const low = line.toLowerCase();
+    if (bannedPhrases.some((p) => low.includes(p))) return false;
+    return true;
+  });
+
+  if (cleaned.length !== lines.length) {
+    if (cleaned.length === 0) return result;
+    return replaceSection(result, "FACT", cleaned.join("\n"));
+  }
+
+  return result;
+}
+
+function enforcePromptVersionFirstLine(result) {
+  const text = normalizeNewlines(result);
+  const lines = text.split("\n");
+
+  if (lines[0]?.trim() === "PROMPT_VERSION_RETURN_V9") return text;
+  return ["PROMPT_VERSION_RETURN_V9", ...lines].join("\n");
+}
+
+// --------------------
+// Route
+// --------------------
 app.post("/clarity", async (req, res) => {
   try {
     const { answers } = req.body;
@@ -55,6 +289,8 @@ REFLECTION
 - Briefly summarize what feels heavy, what the user is carrying, and the emotional pattern showing up.
 - This may include emotions, sensations, and what the mind is doing internally.
 - Keep it concise and specific to the user's actual words.
+- Do not infer motives (“trying to explain why you’re like this”).
+- Prefer describing what they reported: “your mind is scanning for more evidence” is okay if they literally said that; otherwise simplify.
 
 FACT
 - List only simple observable or externally reportable facts.
@@ -152,10 +388,20 @@ REMINDER
 - Do not make it poetic, vague, or overly spiritual.
 
 ONE SMALL ACTION
-- Give only one small action if one is clearly available from the user's answers.
-- Keep it immediate and realistic.
-- The action must be specific and immediately doable today.
-- Avoid vague instructions like "explore options" or "identify steps".
+- Output exactly ONE action as ONE short sentence.
+- Must take under 10 seconds.
+- Do NOT use the words: breathe, breath, inhale, exhale.
+- Do NOT mention minutes, timing, or “until you feel…”.
+- Do NOT give self-regulation advice like “relax” or “center”.
+- If the user’s suggested action is vague (e.g., “relax”, “calm down”, “center”, “recenter”), DO NOT reuse it.
+- If the user suggests breathing, DO NOT reuse it.
+- Choose ONE from this allowed set (output exactly one line, no bullets, no quotes):
+  Unclench your jaw.
+  Drop your shoulders.
+  Feel both feet on the floor.
+  Look around and name 3 objects.
+  Take one sip of water.
+  Soften your belly.
 
 GLOBAL RULES
 - No markdown symbols like ### or **.
@@ -200,7 +446,7 @@ Do not output the words "SECTION RULES".`;
       messages: [{ role: "user", content: prompt }],
     });
 
-    const result = completion.choices?.[0]?.message?.content?.trim();
+    let result = completion.choices?.[0]?.message?.content?.trim();
 
     if (!result) {
       return res.status(500).json({
@@ -208,11 +454,23 @@ Do not output the words "SECTION RULES".`;
       });
     }
 
+    result = enforcePromptVersionFirstLine(result);
+    result = enforceFactsAreExternal(result);
+
+    const actionEnforcement = enforceOneSmallAction(result);
+    result = actionEnforcement.result;
+
+    result = ensureCanonicalOrder(result);
+
     res.json({
       result,
       debug: {
         expected_prompt_version: "PROMPT_VERSION_RETURN_V9",
         model: "gpt-5.2",
+        action_before: actionEnforcement.debug.action_before,
+        action_after: actionEnforcement.debug.action_after,
+        enforced: actionEnforcement.debug.enforced,
+        commit_hint: "RETURN_ACTION_ENFORCER_V2",
       },
     });
   } catch (error) {

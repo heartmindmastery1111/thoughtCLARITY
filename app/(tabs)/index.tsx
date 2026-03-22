@@ -101,6 +101,9 @@ export default function HomeScreen() {
   const [breathIndex, setBreathIndex] = useState(0);
   const [breathingComplete, setBreathingComplete] = useState(false);
 
+  // Countdown: 3,2,1 before first breath
+  const [countdown, setCountdown] = useState<number | null>(null);
+
   const breathWordOpacity = useRef(new Animated.Value(0)).current;
   const breathWordScale = useRef(new Animated.Value(1)).current;
   const breathCircleScale = useRef(new Animated.Value(1)).current;
@@ -116,10 +119,29 @@ export default function HomeScreen() {
     return BREATH_SEQUENCE[breathIndex]?.label ?? "";
   }, [screen, breathIndex, breathingComplete]);
 
+  // Countdown tick (only on breathe screen)
+  useEffect(() => {
+    if (screen !== "breathe") return;
+    if (countdown === null) return;
+
+    if (countdown <= 1) {
+      const t = setTimeout(() => setCountdown(null), 900);
+      return () => clearTimeout(t);
+    }
+
+    const t = setTimeout(() => {
+      setCountdown((c) => (c ? c - 1 : null));
+    }, 900);
+
+    return () => clearTimeout(t);
+  }, [screen, countdown]);
+
+  // Breathing animation
   useEffect(() => {
     if (screen !== "breathe") {
       setBreathIndex(0);
       setBreathingComplete(false);
+      setCountdown(null);
       breathWordOpacity.setValue(0);
       breathWordScale.setValue(1);
       breathCircleScale.setValue(1);
@@ -127,6 +149,9 @@ export default function HomeScreen() {
       breathingDoneOpacity.setValue(0);
       return;
     }
+
+    // Wait until countdown finishes before starting breathing
+    if (countdown !== null) return;
 
     if (breathingComplete) {
       Animated.timing(breathingDoneOpacity, {
@@ -213,6 +238,7 @@ export default function HomeScreen() {
     };
   }, [
     screen,
+    countdown,
     breathIndex,
     breathingComplete,
     breathWordOpacity,
@@ -227,6 +253,9 @@ export default function HomeScreen() {
     setAnswers(Array(6).fill(""));
     setInput("");
     setQuestionIndex(0);
+    setBreathIndex(0);
+    setBreathingComplete(false);
+    setCountdown(3); // start countdown immediately on breathe screen
     setScreen("breathe");
   };
 
@@ -309,7 +338,15 @@ export default function HomeScreen() {
       });
 
       const data = await response.json();
-      setResult(
+      console.log("API_URL", API_URL);
+console.log("DEBUG", data.debug);
+console.log("FIRST_LINE", String(data.result || "").split("\n")[0]);
+
+console.log("API_URL", API_URL);
+console.log("DEBUG", data.debug);
+console.log("FIRST_LINE", String(data.result || "").split("\n")[0]);
+      
+setResult(
         typeof data.result === "string"
           ? data.result
           : JSON.stringify(data, null, 2)
@@ -332,6 +369,7 @@ export default function HomeScreen() {
     setLoading(false);
     setBreathIndex(0);
     setBreathingComplete(false);
+    setCountdown(null);
     breathWordOpacity.setValue(0);
     breathWordScale.setValue(1);
     breathCircleScale.setValue(1);
@@ -393,7 +431,8 @@ export default function HomeScreen() {
             <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
             <Text style={styles.title}>Raw Response</Text>
             <Text style={styles.subtitle}>
-              The AI responded, but the section parser did not match the format yet.
+              The AI responded, but the section parser did not match the format
+              yet.
             </Text>
 
             <View style={styles.section}>
@@ -489,11 +528,13 @@ export default function HomeScreen() {
           <View style={styles.integrateBox}>
             <Text style={styles.integrateTitle}>What just happened</Text>
             <Text style={styles.integrateText}>
-              You started with something that felt heavy. Instead of reacting to it,
-              you slowed down and looked at it. You saw the thought behind what you
-              were feeling. And for a moment, you stepped back from it.
+              You started with something that felt heavy. Instead of reacting to
+              it, you slowed down and looked at it. You saw the thought behind
+              what you were feeling. And for a moment, you stepped back from it.
             </Text>
-            <Text style={styles.integrateText}>That’s why things felt lighter.</Text>
+            <Text style={styles.integrateText}>
+              That’s why things felt lighter.
+            </Text>
             <Text style={styles.integrateText}>
               Not because the situation changed — but because you were no longer
               fully inside the thought.
@@ -501,9 +542,9 @@ export default function HomeScreen() {
 
             <Text style={styles.integrateTitle}>Why this works</Text>
             <Text style={styles.integrateText}>
-              When a thought feels real, your body reacts as if it’s true. When you
-              see it clearly, that reaction softens. Nothing needed to be fixed.
-              You just saw what was happening.
+              When a thought feels real, your body reacts as if it’s true. When
+              you see it clearly, that reaction softens. Nothing needed to be
+              fixed. You just saw what was happening.
             </Text>
 
             <Text style={styles.integrateTitle}>What to remember</Text>
@@ -613,13 +654,18 @@ export default function HomeScreen() {
                 style={[
                   styles.breathCircle,
                   {
-                    opacity: breathingComplete ? 0.18 : breathWordOpacity,
+                    opacity:
+                      breathingComplete || countdown !== null
+                        ? 0.18
+                        : breathWordOpacity,
                     transform: [{ scale: breathCircleScale }],
                   },
                 ]}
               />
 
-              {!breathingComplete ? (
+              {countdown !== null ? (
+                <Text style={styles.countdownText}>{countdown}</Text>
+              ) : !breathingComplete ? (
                 <Animated.Text
                   style={[
                     styles.breathingWord,
@@ -649,6 +695,8 @@ export default function HomeScreen() {
             <Text style={styles.breathingSubtext}>
               {breathingComplete
                 ? "You’ve completed 5 breaths. Click Next."
+                : countdown !== null
+                ? "Get ready..."
                 : "Follow the word on the screen."}
             </Text>
           </View>
@@ -656,6 +704,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.skipButton}
             onPress={() => {
+              setCountdown(null);
               setBreathingComplete(true);
               setBreathIndex(BREATH_SEQUENCE.length - 1);
             }}
@@ -687,14 +736,17 @@ export default function HomeScreen() {
     );
   }
 
+  // Reflect screen
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
         <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
         <Text style={styles.title}>Reflect</Text>
         <Text style={styles.subtitle}>
-          Answer what comes up. There are no right or wrong answers. Move slowly.
-          You don’t need the perfect words.
+          Answer what comes up. There are no right or wrong answers.{"\n"}
+          This works best when you move through it slowly and honestly.{"\n"}
+          Try to focus on what you are feeling and experiencing inside, not only
+          the situation itself.
         </Text>
 
         <View style={styles.progressRow}>
@@ -728,10 +780,7 @@ export default function HomeScreen() {
         />
 
         <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handleBack}
-          >
+          <TouchableOpacity style={styles.secondaryButton} onPress={handleBack}>
             <Text style={styles.secondaryButtonText}>Back</Text>
           </TouchableOpacity>
 
@@ -891,6 +940,12 @@ const styles = StyleSheet.create({
     height: 130,
     borderRadius: 65,
     backgroundColor: "#7C8BFF",
+  },
+  countdownText: {
+    color: "#FFFFFF",
+    fontSize: 64,
+    fontWeight: "900",
+    textAlign: "center",
   },
   breathingWord: {
     color: "#FFFFFF",
