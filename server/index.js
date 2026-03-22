@@ -292,11 +292,7 @@ function enforceAnchorCleanup(result) {
     .replace(/\s{2,}/g, " ")
     .trim();
 
-  const sentences = splitIntoSentences(cleaned).slice(0, 2);
-  if (sentences.length === 0) return result;
-
-  const finalAnchor = sentences.map(ensureSentenceEnd).join(" ");
-  return replaceSection(result, "CLARITY ANCHOR", finalAnchor);
+  return replaceSection(result, "CLARITY ANCHOR", cleaned);
 }
 
 function enforcePromptVersionFirstLine(result) {
@@ -549,7 +545,7 @@ Do not output the words "SECTION RULES".`;
         action_before: actionEnforcement.debug.action_before,
         action_after: actionEnforcement.debug.action_after,
         enforced: actionEnforcement.debug.enforced,
-        commit_hint: "RETURN_ACTION_ENFORCER_V4",
+        commit_hint: "RETURN_ACTION_ENFORCER_V5",
       },
     });
   } catch (error) {
