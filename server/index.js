@@ -225,6 +225,13 @@ function enforceFactsAreExternal(result) {
     "heavy",
     "stress",
     "stressed",
+    "you are in your room",
+"you are here",
+"holding your phone",
+"nothing dangerous is happening",
+"safe right now",
+"safely in your room",
+"in this moment",
   ];
 
   const cleaned = lines.filter((line) => {
@@ -545,7 +552,7 @@ Do not output the words "SECTION RULES".`;
         action_before: actionEnforcement.debug.action_before,
         action_after: actionEnforcement.debug.action_after,
         enforced: actionEnforcement.debug.enforced,
-        commit_hint: "RETURN_ACTION_ENFORCER_V5",
+        commit_hint: "RETURN_ACTION_ENFORCER_V6",
       },
     });
   } catch (error) {
