@@ -12,47 +12,48 @@ import {
 
 const QUESTIONS = [
   {
-    label: "Current Question",
+    label: "Question 1",
     text: "What feels heavy, uncomfortable, or upsetting right now?",
     example:
-      "Example: “I’m feeling guilty about what happened.” or “I feel stressed about money.”",
+      "Example: “I’m feeling guilty about what happened.” / “I feel stressed about money.”",
     answerIndex: 0,
     progressNumber: 1,
   },
   {
-    label: "Current Question",
+    label: "Question 2",
     text: "What do you notice happening inside you right now?",
     example:
-      "Example: “My thoughts are racing.” or “I feel anxious, sad, and overwhelmed.”",
+      "Example: “My thoughts are racing.” / “I feel anxious, sad, and overwhelmed.”",
     answerIndex: 1,
     progressNumber: 2,
   },
   {
-    label: "Current Question",
+    label: "Question 3",
     text: "Where do you feel this in your body?",
-    example: "Example: “In my chest.” or “My stomach feels tight.”",
+    example: "Example: “In my chest.” / “My stomach feels tight.”",
     answerIndex: 2,
     progressNumber: 3,
   },
   {
-    label: "Current Question",
+    label: "Question 4",
     text: "What thought keeps coming up about this situation?",
-    example: "Example: “It’s my fault.” or “I’m not good enough.”",
+    example: "Example: “It’s my fault.” / “I’m not good enough.”",
     answerIndex: 3,
     progressNumber: 4,
   },
   {
-    label: "Current Question",
-    text: "If you didn’t fully believe that thought for a moment, what would still be here?",
-    example: "Example: “I’d still be here feeling this, but safe right now.”",
+    label: "Question 5",
+    text: "If that thought became quieter for a moment, what would you notice instead?",
+    example:
+      "Example: “I would still be here feeling this emotion, but safely in my room.” / “I would just be here, feeling stressed, without the extra panic.”",
     answerIndex: 4,
     progressNumber: 5,
   },
   {
-    label: "Current Question",
+    label: "Question 6",
     text: "What is one small thing you can do right now?",
     example:
-      "Example: “Take a few slow breaths.” or “Drink some water and sit for a moment.”",
+      "Example: “Take a few slow breaths.” / “Drink some water and sit down for a moment.”",
     answerIndex: 5,
     progressNumber: 6,
   },
@@ -60,6 +61,8 @@ const QUESTIONS = [
 
 const API_URL = "https://thoughtclarity-api.onrender.com/clarity";
 
+// 5 breaths total = 10 steps
+// inhale 4s, exhale 6s
 const BREATH_SEQUENCE = [
   { label: "Inhale", duration: 4000 },
   { label: "Exhale", duration: 6000 },
@@ -72,6 +75,10 @@ const BREATH_SEQUENCE = [
   { label: "Inhale", duration: 4000 },
   { label: "Exhale", duration: 6000 },
 ] as const;
+
+const TOTAL_BREATHS = BREATH_SEQUENCE.filter(
+  (step) => step.label === "Inhale"
+).length;
 
 type Screen =
   | "intro"
@@ -100,8 +107,6 @@ export default function HomeScreen() {
 
   const [breathIndex, setBreathIndex] = useState(0);
   const [breathingComplete, setBreathingComplete] = useState(false);
-
-  // Countdown: 3,2,1 before first breath
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const breathWordOpacity = useRef(new Animated.Value(0)).current;
@@ -119,24 +124,34 @@ export default function HomeScreen() {
     return BREATH_SEQUENCE[breathIndex]?.label ?? "";
   }, [screen, breathIndex, breathingComplete]);
 
-  // Countdown tick (only on breathe screen)
+  const currentBreathInstruction = useMemo(() => {
+    if (screen !== "breathe" || breathingComplete || countdown !== null) return "";
+    return currentBreathLabel === "Inhale"
+      ? "Breathe in through the nose"
+      : "Exhale through the mouth";
+  }, [screen, breathingComplete, countdown, currentBreathLabel]);
+
+  const currentBreathNumber = useMemo(() => {
+    if (breathingComplete) return TOTAL_BREATHS;
+    return Math.min(Math.floor(breathIndex / 2) + 1, TOTAL_BREATHS);
+  }, [breathIndex, breathingComplete]);
+
   useEffect(() => {
     if (screen !== "breathe") return;
     if (countdown === null) return;
 
     if (countdown <= 1) {
-      const t = setTimeout(() => setCountdown(null), 900);
+      const t = setTimeout(() => setCountdown(null), 1000);
       return () => clearTimeout(t);
     }
 
     const t = setTimeout(() => {
       setCountdown((c) => (c ? c - 1 : null));
-    }, 900);
+    }, 1000);
 
     return () => clearTimeout(t);
   }, [screen, countdown]);
 
-  // Breathing animation
   useEffect(() => {
     if (screen !== "breathe") {
       setBreathIndex(0);
@@ -150,7 +165,6 @@ export default function HomeScreen() {
       return;
     }
 
-    // Wait until countdown finishes before starting breathing
     if (countdown !== null) return;
 
     if (breathingComplete) {
@@ -172,12 +186,12 @@ export default function HomeScreen() {
 
     breathWordOpacity.setValue(0);
     breathWordScale.setValue(isInhale ? 0.96 : 1.04);
-    breathCircleScale.setValue(isInhale ? 0.86 : 1.08);
+    breathCircleScale.setValue(isInhale ? 0.84 : 1.1);
 
     if (breathIndex === 0) {
       Animated.timing(breathGuideOpacity, {
         toValue: 0.4,
-        duration: 1200,
+        duration: 1400,
         useNativeDriver: true,
       }).start();
     }
@@ -190,18 +204,18 @@ export default function HomeScreen() {
           useNativeDriver: true,
         }),
         Animated.timing(breathWordOpacity, {
-          toValue: 0.25,
-          duration: Math.max(900, breathStep.duration - 900),
+          toValue: 0.3,
+          duration: Math.max(1200, breathStep.duration - 900),
           useNativeDriver: true,
         }),
       ]),
       Animated.timing(breathWordScale, {
-        toValue: isInhale ? 1.05 : 0.95,
+        toValue: isInhale ? 1.06 : 0.95,
         duration: breathStep.duration,
         useNativeDriver: true,
       }),
       Animated.timing(breathCircleScale, {
-        toValue: isInhale ? 1.12 : 0.9,
+        toValue: isInhale ? 1.16 : 0.88,
         duration: breathStep.duration,
         useNativeDriver: true,
       }),
@@ -255,7 +269,7 @@ export default function HomeScreen() {
     setQuestionIndex(0);
     setBreathIndex(0);
     setBreathingComplete(false);
-    setCountdown(3); // start countdown immediately on breathe screen
+    setCountdown(3);
     setScreen("breathe");
   };
 
@@ -338,15 +352,12 @@ export default function HomeScreen() {
       });
 
       const data = await response.json();
-      console.log("API_URL", API_URL);
-console.log("DEBUG", data.debug);
-console.log("FIRST_LINE", String(data.result || "").split("\n")[0]);
 
-console.log("API_URL", API_URL);
-console.log("DEBUG", data.debug);
-console.log("FIRST_LINE", String(data.result || "").split("\n")[0]);
-      
-setResult(
+      console.log("API_URL", API_URL);
+      console.log("DEBUG", data.debug);
+      console.log("FIRST_LINE", String(data.result || "").split("\n")[0]);
+
+      setResult(
         typeof data.result === "string"
           ? data.result
           : JSON.stringify(data, null, 2)
@@ -431,8 +442,7 @@ setResult(
             <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
             <Text style={styles.title}>Raw Response</Text>
             <Text style={styles.subtitle}>
-              The AI responded, but the section parser did not match the format
-              yet.
+              The AI responded, but the section parser did not match the format yet.
             </Text>
 
             <View style={styles.section}>
@@ -610,6 +620,20 @@ setResult(
             behind it, create distance from it, and return to peace.
           </Text>
 
+          <View style={styles.infoBox}>
+            <Text style={styles.infoText}>Breathe in through the nose.</Text>
+            <Text style={styles.infoSpacer}> </Text>
+            <Text style={styles.infoText}>Exhale through the mouth.</Text>
+            <Text style={styles.infoSpacer}> </Text>
+            <Text style={styles.infoText}>
+              Did you know? A longer exhale can help calm the vagus nerve.
+            </Text>
+            <Text style={styles.infoSpacer}> </Text>
+            <Text style={styles.infoText}>
+              Try 4 seconds in through the nose and 6 seconds out through the mouth.
+            </Text>
+          </View>
+
           <TouchableOpacity style={styles.button} onPress={startFlow}>
             <Text style={styles.buttonText}>Let&apos;s begin</Text>
           </TouchableOpacity>
@@ -644,7 +668,7 @@ setResult(
                 },
               ]}
             >
-              Take five slow breaths.
+              Take {TOTAL_BREATHS} slow breaths.
             </Animated.Text>
 
             <Text style={styles.breathingLabel}>Breath Cue</Text>
@@ -692,12 +716,20 @@ setResult(
               )}
             </View>
 
-            <Text style={styles.breathingSubtext}>
+            <Text style={styles.breathingInstruction}>
               {breathingComplete
-                ? "You’ve completed 5 breaths. Click Next."
+                ? `You’ve completed ${TOTAL_BREATHS} breaths.`
                 : countdown !== null
                 ? "Get ready..."
-                : "Follow the word on the screen."}
+                : currentBreathInstruction}
+            </Text>
+
+            <Text style={styles.breathingSubtext}>
+              {breathingComplete
+                ? "Click Next to continue."
+                : countdown !== null
+                ? "3... 2... 1..."
+                : `Breath ${currentBreathNumber} of ${TOTAL_BREATHS}`}
             </Text>
           </View>
 
@@ -706,7 +738,7 @@ setResult(
             onPress={() => {
               setCountdown(null);
               setBreathingComplete(true);
-              setBreathIndex(BREATH_SEQUENCE.length - 1);
+              setBreathIndex(BREATH_SEQUENCE.length);
             }}
           >
             <Text style={styles.skipButtonText}>Skip for testing</Text>
@@ -736,7 +768,6 @@ setResult(
     );
   }
 
-  // Reflect screen
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
@@ -840,6 +871,23 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 18,
   },
+  infoBox: {
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 18,
+  },
+  infoText: {
+    color: "#E8ECF3",
+    fontSize: 15,
+    lineHeight: 23,
+    textAlign: "center",
+  },
+  infoSpacer: {
+    height: 10,
+  },
   progressRow: {
     marginBottom: 16,
   },
@@ -902,7 +950,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   breathingPanel: {
-    minHeight: 270,
+    minHeight: 300,
     backgroundColor: "#0F131B",
     borderWidth: 1,
     borderColor: "#232938",
@@ -953,6 +1001,15 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 48,
     textAlign: "center",
+  },
+  breathingInstruction: {
+    color: "#E8ECF3",
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 22,
+    textAlign: "center",
+    marginTop: 6,
+    marginBottom: 6,
   },
   breathingDoneWrap: {
     alignItems: "center",
