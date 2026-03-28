@@ -82,10 +82,12 @@ function ensureSentenceEnd(text) {
 }
 
 function firstMeaningfulLine(block) {
-  return String(block || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean) || "";
+  return (
+    String(block || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean) || ""
+  );
 }
 
 function findSectionMatch(result, heading) {
@@ -226,12 +228,12 @@ function enforceFactsAreExternal(result) {
     "stress",
     "stressed",
     "you are in your room",
-"you are here",
-"holding your phone",
-"nothing dangerous is happening",
-"safe right now",
-"safely in your room",
-"in this moment",
+    "you are here",
+    "holding your phone",
+    "nothing dangerous is happening",
+    "safe right now",
+    "safely in your room",
+    "in this moment",
   ];
 
   const cleaned = lines.filter((line) => {
@@ -311,8 +313,12 @@ function enforcePromptVersionFirstLine(result) {
 }
 
 // --------------------
-// Route
+// Routes
 // --------------------
+
+app.get("/", (req, res) => {
+  res.json({ ok: true, service: "thoughtclarity-api" });
+});
 
 app.post("/clarity", async (req, res) => {
   try {
@@ -552,7 +558,7 @@ Do not output the words "SECTION RULES".`;
         action_before: actionEnforcement.debug.action_before,
         action_after: actionEnforcement.debug.action_after,
         enforced: actionEnforcement.debug.enforced,
-        commit_hint: "RETURN_ACTION_ENFORCER_V6",
+        commit_hint: "RETURN_ACTION_ENFORCER_V6_WITH_TALK_ROUTE",
       },
     });
   } catch (error) {
@@ -563,6 +569,108 @@ Do not output the words "SECTION RULES".`;
   }
 });
 
-app.listen(3001, () => {
-  console.log("Server running on http://localhost:3001");
+app.post("/talk", async (req, res) => {
+  try {
+    const { messages } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({
+        error: "Messages are required and must be a non-empty array.",
+      });
+    }
+
+    const safeMessages = messages
+      .filter(
+        (message) =>
+          message &&
+          (message.role === "user" || message.role === "assistant") &&
+          typeof message.content === "string" &&
+          message.content.trim().length > 0
+      )
+      .map((message) => ({
+        role: message.role,
+        content: message.content.trim(),
+      }));
+
+    if (safeMessages.length === 0) {
+      return res.status(400).json({
+        error: "No valid messages were provided.",
+      });
+    }
+
+    const systemPrompt = `You are Talk It Through inside The RETURN: Reclaim Peace.
+
+Your job is to help the user talk through what is on their mind in a way that feels natural, grounded, clear, and deeply human.
+
+How to respond:
+- sound like a real back-and-forth conversation, not a worksheet
+- do not use the 6-question clarity structure
+- do not sound robotic, clinical, scripted, or overly therapeutic
+- do not overexplain
+- do not give long lectures
+- do not sound like generic self-help
+- do not be cheesy, overly soft, or artificially comforting
+- respond directly to what the user actually said
+- help the user see more clearly what is happening in their mind, body, and situation
+- when helpful, name the pattern simply and clearly
+- when helpful, ask one good follow-up question, not many
+- keep most replies to 2-6 short paragraphs
+- it is okay to be concise
+- do not use bullet points unless absolutely necessary
+- do not mention being an AI
+- do not mention policies, safety, or limitations
+- do not force positivity
+- do not act like a therapist
+- stay calm, real, precise, and present
+
+Style:
+- grounded
+- conversational
+- clear
+- responsive
+- intelligent
+- emotionally accurate
+- natural enough that it feels like ChatGPT talking naturally with the user
+
+Main goal:
+Help the user feel more clear, less tangled, and more able to see what is actually happening.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5.2",
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...safeMessages,
+      ],
+    });
+
+    const reply = completion.choices?.[0]?.message?.content?.trim();
+
+    if (!reply) {
+      return res.status(500).json({
+        error: "No Talk It Through response returned from OpenAI.",
+      });
+    }
+
+    res.json({
+      reply,
+      debug: {
+        model: "gpt-5.2",
+        message_count: safeMessages.length,
+        commit_hint: "RETURN_TALK_IT_THROUGH_V1",
+      },
+    });
+  } catch (error) {
+    console.error("TALK ERROR:", error);
+    res.status(500).json({
+      error:
+        error?.message || "Something went wrong while generating the response.",
+    });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
