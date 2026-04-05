@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 
 const QUESTIONS = [
   {
@@ -61,6 +63,8 @@ const QUESTIONS = [
 ] as const;
 
 const API_URL = "https://thoughtclarity-api.onrender.com/clarity";
+const SAVE_SESSION_URL = "https://thoughtclarity-api.onrender.com/sessions/save";
+const USER_ID_STORAGE_KEY = "return_anonymous_user_id";
 
 const BREATH_SEQUENCE = [
   { label: "Inhale", duration: 4000 },
@@ -96,6 +100,53 @@ type ParsedSections = {
   oneSmallAction: string;
 };
 
+async function getStoredValue(key: string) {
+  if (Platform.OS === "web") {
+    return typeof window !== "undefined" ? localStorage.getItem(key) : null;
+  }
+
+  return SecureStore.getItemAsync(key);
+}
+
+async function setStoredValue(key: string, value: string) {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(key, value);
+    }
+    return;
+  }
+
+  await SecureStore.setItemAsync(key, value);
+}
+
+async function getAnonymousUserId() {
+  const existing = await getStoredValue(USER_ID_STORAGE_KEY);
+  if (existing) return existing;
+
+  const newId = `anon_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  await setStoredValue(USER_ID_STORAGE_KEY, newId);
+  return newId;
+}
+
+function buildSessionTitle(sections: ParsedSections) {
+  const source =
+    sections.mindStory.trim() ||
+    sections.reflection.trim() ||
+    "Clarity Session";
+
+  const cleaned = source.replace(/^["']|["']$/g, "");
+  return cleaned.length > 80 ? `${cleaned.slice(0, 77)}...` : cleaned;
+}
+
+function buildSessionSummary(sections: ParsedSections) {
+  const source =
+    sections.reflection.trim() ||
+    sections.clarityAnchor.trim() ||
+    "Saved clarity session.";
+
+  return source.length > 180 ? `${source.slice(0, 177)}...` : source;
+}
+
 export default function ClaritySessionScreen() {
   const router = useRouter();
 
@@ -105,6 +156,10 @@ export default function ClaritySessionScreen() {
   const [input, setInput] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [isSavingSession, setIsSavingSession] = useState(false);
+  const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState("");
 
   const [breathIndex, setBreathIndex] = useState(0);
   const [breathingComplete, setBreathingComplete] = useState(false);
@@ -271,6 +326,9 @@ export default function ClaritySessionScreen() {
     setBreathIndex(0);
     setBreathingComplete(false);
     setCountdown(3);
+    setIsSavingSession(false);
+    setSavedSessionId(null);
+    setSaveError("");
     setScreen("breathe");
   };
 
@@ -343,6 +401,9 @@ export default function ClaritySessionScreen() {
     setLoading(true);
     setScreen("loading");
     setResult("");
+    setIsSavingSession(false);
+    setSavedSessionId(null);
+    setSaveError("");
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 1800));
@@ -384,6 +445,9 @@ export default function ClaritySessionScreen() {
     setInput("");
     setResult("");
     setLoading(false);
+    setIsSavingSession(false);
+    setSavedSessionId(null);
+    setSaveError("");
     setBreathIndex(0);
     setBreathingComplete(false);
     setCountdown(null);
@@ -432,6 +496,61 @@ export default function ClaritySessionScreen() {
     }
 
     return sections;
+  };
+
+  const handleSaveSession = async () => {
+    if (!result.trim() || isSavingSession || savedSessionId) return;
+
+    const sections = parseSections(result);
+    const hasParsedSections = Object.values(sections).some(
+      (value) => value.trim().length > 0
+    );
+
+    if (!hasParsedSections) {
+      setSaveError("Could not save because the result sections were not parsed.");
+      return;
+    }
+
+    setIsSavingSession(true);
+    setSaveError("");
+
+    try {
+      const userId = await getAnonymousUserId();
+
+      const payload = {
+        userId,
+        answers,
+        sections,
+        rawResult: result,
+        title: buildSessionTitle(sections),
+        summary: buildSessionSummary(sections),
+        metadata: {
+          savedFrom: "clarity_result_screen",
+        },
+      };
+
+      const response = await fetch(SAVE_SESSION_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to save session.");
+      }
+
+      setSavedSessionId(data?.session?.id || "saved");
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "Failed to save session."
+      );
+    } finally {
+      setIsSavingSession(false);
+    }
   };
 
   if (screen === "result" && result) {
@@ -519,6 +638,31 @@ export default function ClaritySessionScreen() {
               Want to integrate or understand what happened?
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleSaveSession}
+            disabled={isSavingSession || !!savedSessionId}
+            style={[
+              styles.secondaryActionButton,
+              {
+                marginTop: 12,
+                backgroundColor: savedSessionId ? "#17301F" : "#0F131B",
+                opacity: isSavingSession ? 0.7 : 1,
+              },
+            ]}
+          >
+            {isSavingSession ? (
+              <ActivityIndicator color="#E8ECF3" />
+            ) : (
+              <Text style={styles.secondaryActionButtonText}>
+                {savedSessionId ? "Session Saved" : "Save Session"}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {!!saveError.trim() && (
+            <Text style={styles.saveErrorText}>{saveError}</Text>
+          )}
 
           <TouchableOpacity
             style={styles.secondaryActionButton}
@@ -1112,6 +1256,12 @@ const styles = StyleSheet.create({
     color: "#E8ECF3",
     fontSize: 15,
     fontWeight: "700",
+  },
+  saveErrorText: {
+    marginTop: 10,
+    color: "#FCA5A5",
+    textAlign: "center",
+    lineHeight: 20,
   },
   loadingScreenBox: {
     minHeight: 220,

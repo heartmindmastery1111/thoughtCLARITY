@@ -2,6 +2,9 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const OpenAI = require("openai");
+const crypto = require("crypto");
+const { getApps, initializeApp, cert } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
 
 const app = express();
 
@@ -11,6 +14,86 @@ app.use(express.json());
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+function getFirebaseEnv() {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error(
+      "Missing Firebase env vars. Required: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY"
+    );
+  }
+
+  return { projectId, clientEmail, privateKey };
+}
+
+function getDb() {
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert(getFirebaseEnv()),
+    });
+  }
+
+  return getFirestore();
+}
+
+function cleanText(value, fallback = "") {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+function normalizeAnswers(answers) {
+  if (!Array.isArray(answers)) return [];
+  return answers.map((answer) => cleanText(answer));
+}
+
+function normalizeSessionSections(sections = {}) {
+  return {
+    reflection: cleanText(sections.reflection),
+    fact: cleanText(sections.fact),
+    mindStory: cleanText(sections.mindStory),
+    clarityAnchor: cleanText(sections.clarityAnchor),
+    reminder: cleanText(sections.reminder),
+    oneSmallAction: cleanText(sections.oneSmallAction),
+  };
+}
+
+function buildSessionTitle(providedTitle, sections) {
+  const safeProvided = cleanText(providedTitle);
+  if (safeProvided) return safeProvided.slice(0, 80);
+
+  const source =
+    cleanText(sections.mindStory) ||
+    cleanText(sections.reflection) ||
+    "Clarity Session";
+
+  const stripped = source.replace(/^["']|["']$/g, "");
+  return stripped.length > 80 ? `${stripped.slice(0, 77)}...` : stripped;
+}
+
+function buildSessionSummary(providedSummary, sections) {
+  const safeProvided = cleanText(providedSummary);
+  if (safeProvided) return safeProvided.slice(0, 180);
+
+  const source =
+    cleanText(sections.reflection) ||
+    cleanText(sections.clarityAnchor) ||
+    "Saved clarity session.";
+
+  return source.length > 180 ? `${source.slice(0, 177)}...` : source;
+}
+
+function buildInputObject(answers) {
+  return {
+    question1: answers[0] || "",
+    question2: answers[1] || "",
+    question3: answers[2] || "",
+    question4: answers[3] || "",
+    question5: answers[4] || "",
+    question6: answers[5] || "",
+  };
+}
 
 // --------------------
 // Section parsing helpers
@@ -320,6 +403,148 @@ app.get("/", (req, res) => {
   res.json({ ok: true, service: "thoughtclarity-api" });
 });
 
+app.post("/sessions/save", async (req, res) => {
+  try {
+    const db = getDb();
+
+    const {
+      userId,
+      answers = [],
+      sections = {},
+      rawResult = "",
+      title = "",
+      summary = "",
+      metadata = {},
+    } = req.body || {};
+
+    const cleanUserId = cleanText(userId);
+    const cleanAnswers = normalizeAnswers(answers);
+    const cleanSections = normalizeSessionSections(sections);
+    const cleanRawResult = cleanText(rawResult);
+
+    if (!cleanUserId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (cleanAnswers.length !== 6) {
+      return res.status(400).json({ error: "answers must contain 6 items." });
+    }
+
+    if (!cleanSections.reflection && !cleanSections.clarityAnchor) {
+      return res.status(400).json({
+        error: "sections are required and must include parsed clarity content.",
+      });
+    }
+
+    const id = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    const session = {
+      id,
+      userId: cleanUserId,
+      type: "clarity_session",
+      title: buildSessionTitle(title, cleanSections),
+      summary: buildSessionSummary(summary, cleanSections),
+      input: buildInputObject(cleanAnswers),
+      answers: cleanAnswers,
+      output: cleanSections,
+      rawResult: cleanRawResult,
+      tags: [],
+      patternMarkers: [],
+      metadata: {
+        source: "clarity_session",
+        appVersion: "v2",
+        ...metadata,
+      },
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    };
+
+    await db.collection("sessions").doc(id).set(session);
+
+    return res.status(201).json({
+      ok: true,
+      session,
+    });
+  } catch (error) {
+    console.error("POST /sessions/save error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to save session.",
+    });
+  }
+});
+
+app.get("/sessions", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.query.userId);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    const snapshot = await db
+      .collection("sessions")
+      .where("userId", "==", userId)
+      .get();
+
+    const sessions = snapshot.docs
+      .map((doc) => doc.data())
+      .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+    return res.json({
+      ok: true,
+      sessions,
+    });
+  } catch (error) {
+    console.error("GET /sessions error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch sessions.",
+    });
+  }
+});
+
+app.get("/sessions/:id", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.query.userId);
+    const sessionId = cleanText(req.params.id);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (!sessionId) {
+      return res.status(400).json({ error: "session id is required." });
+    }
+
+    const doc = await db.collection("sessions").doc(sessionId).get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    const session = doc.data();
+
+    if (session.userId !== userId) {
+      return res.status(403).json({ error: "Not allowed to access this session." });
+    }
+
+    return res.json({
+      ok: true,
+      session,
+    });
+  } catch (error) {
+    console.error("GET /sessions/:id error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch session.",
+    });
+  }
+});
+
 app.post("/clarity", async (req, res) => {
   try {
     const { answers } = req.body;
@@ -558,7 +783,7 @@ Do not output the words "SECTION RULES".`;
         action_before: actionEnforcement.debug.action_before,
         action_after: actionEnforcement.debug.action_after,
         enforced: actionEnforcement.debug.enforced,
-        commit_hint: "RETURN_ACTION_ENFORCER_V6_WITH_TALK_ROUTE",
+        commit_hint: "RETURN_ACTION_ENFORCER_V6_WITH_TALK_ROUTE_AND_SAVED_SESSIONS",
       },
     });
   } catch (error) {
@@ -638,10 +863,7 @@ Help the user feel more clear, less tangled, and more able to see what is actual
     const completion = await openai.chat.completions.create({
       model: "gpt-5.2",
       temperature: 0.7,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...safeMessages,
-      ],
+      messages: [{ role: "system", content: systemPrompt }, ...safeMessages],
     });
 
     const reply = completion.choices?.[0]?.message?.content?.trim();
