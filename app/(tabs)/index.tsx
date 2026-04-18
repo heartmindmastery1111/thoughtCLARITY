@@ -11,7 +11,7 @@ export default function HomeScreen() {
         <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
         <Text style={styles.title}>What do you need right now?</Text>
         <Text style={styles.subtitle}>
-          Choose the kind of support that fits this moment.
+          The RETURN trains the shift from mental spiraling back to presence.
         </Text>
 
         <View style={styles.optionCard}>
@@ -39,6 +39,20 @@ export default function HomeScreen() {
             onPress={() => router.push("/talk-it-through")}
           >
             <Text style={styles.secondaryButtonText}>Start Talk It Through</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.optionCard}>
+          <Text style={styles.optionTitle}>Clarity Library</Text>
+          <Text style={styles.optionText}>
+            Revisit your saved sessions and track what has been landing most clearly.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push("/library")}
+          >
+            <Text style={styles.secondaryButtonText}>Open Clarity Library</Text>
           </TouchableOpacity>
         </View>
       </View>

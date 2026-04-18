@@ -11,8 +11,12 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 
 const API_URL = "https://thoughtclarity-api.onrender.com/talk";
+const SAVE_TALK_INSIGHT_URL =
+  "https://thoughtclarity-api.onrender.com/talk/save-insight";
+const USER_ID_STORAGE_KEY = "return_anonymous_user_id";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -21,6 +25,53 @@ type ChatMessage = {
 
 const STARTER_MESSAGE =
   "Talk it through naturally. Say what is on your mind, and I’ll help you sort through it clearly.";
+
+async function getStoredValue(key: string) {
+  if (Platform.OS === "web") {
+    return typeof window !== "undefined" ? localStorage.getItem(key) : null;
+  }
+
+  return SecureStore.getItemAsync(key);
+}
+
+async function setStoredValue(key: string, value: string) {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(key, value);
+    }
+    return;
+  }
+
+  await SecureStore.setItemAsync(key, value);
+}
+
+async function getAnonymousUserId() {
+  const existing = await getStoredValue(USER_ID_STORAGE_KEY);
+  if (existing) return existing;
+
+  const newId = `anon_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  await setStoredValue(USER_ID_STORAGE_KEY, newId);
+  return newId;
+}
+
+function buildInsightTitle(messages: ChatMessage[]) {
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user")?.content;
+
+  const source = (lastUserMessage || "Talk Insight").trim();
+  return source.length > 80 ? `${source.slice(0, 77)}...` : source;
+}
+
+function buildInsightSummary(messages: ChatMessage[]) {
+  const lastAssistantMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.content !== STARTER_MESSAGE)
+    ?.content;
+
+  const source = (lastAssistantMessage || "Saved Talk It Through insight.").trim();
+  return source.length > 180 ? `${source.slice(0, 177)}...` : source;
+}
 
 export default function TalkItThroughScreen() {
   const router = useRouter();
@@ -32,10 +83,21 @@ export default function TalkItThroughScreen() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [savingInsight, setSavingInsight] = useState(false);
+  const [savedInsightId, setSavedInsightId] = useState<string | null>(null);
+  const [saveInsightError, setSaveInsightError] = useState("");
+
   const canSend = useMemo(
     () => input.trim().length > 0 && !loading,
     [input, loading]
   );
+
+  const canSaveInsight = useMemo(() => {
+    const meaningfulMessages = messages.filter(
+      (message) => message.content.trim() && message.content !== STARTER_MESSAGE
+    );
+    return meaningfulMessages.length >= 2 && !loading;
+  }, [messages, loading]);
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -56,6 +118,8 @@ export default function TalkItThroughScreen() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
+    setSavedInsightId(null);
+    setSaveInsightError("");
     scrollToBottom();
 
     try {
@@ -101,10 +165,56 @@ export default function TalkItThroughScreen() {
     }
   };
 
+  const handleSaveInsight = async () => {
+    if (!canSaveInsight || savingInsight || savedInsightId) return;
+
+    setSavingInsight(true);
+    setSaveInsightError("");
+
+    try {
+      const userId = await getAnonymousUserId();
+
+      const payload = {
+        userId,
+        messages,
+        title: buildInsightTitle(messages),
+        summary: buildInsightSummary(messages),
+        metadata: {
+          savedFrom: "talk_it_through_screen",
+        },
+      };
+
+      const response = await fetch(SAVE_TALK_INSIGHT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to save insight.");
+      }
+
+      setSavedInsightId(data?.insight?.id || "saved");
+    } catch (error) {
+      setSaveInsightError(
+        error instanceof Error ? error.message : "Failed to save insight."
+      );
+    } finally {
+      setSavingInsight(false);
+    }
+  };
+
   const handleRestart = () => {
     setMessages([{ role: "assistant", content: STARTER_MESSAGE }]);
     setInput("");
     setLoading(false);
+    setSavingInsight(false);
+    setSavedInsightId(null);
+    setSaveInsightError("");
   };
 
   return (
@@ -201,6 +311,30 @@ export default function TalkItThroughScreen() {
                 </View>
               )}
             </ScrollView>
+          </View>
+
+          <View style={styles.saveInsightWrap}>
+            <TouchableOpacity
+              style={[
+                styles.saveInsightButton,
+                (!canSaveInsight || savingInsight) && styles.buttonDisabled,
+                savedInsightId && styles.savedInsightButton,
+              ]}
+              onPress={handleSaveInsight}
+              disabled={!canSaveInsight || savingInsight || !!savedInsightId}
+            >
+              {savingInsight ? (
+                <ActivityIndicator color="#E8ECF3" />
+              ) : (
+                <Text style={styles.saveInsightButtonText}>
+                  {savedInsightId ? "Insight Saved" : "Save This Insight"}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {!!saveInsightError.trim() && (
+              <Text style={styles.saveInsightErrorText}>{saveInsightError}</Text>
+            )}
           </View>
 
           <View style={styles.inputWrap}>
@@ -350,6 +484,33 @@ const styles = StyleSheet.create({
   loadingInlineText: {
     color: "#A8B0BD",
     fontSize: 14,
+  },
+  saveInsightWrap: {
+    marginBottom: 12,
+  },
+  saveInsightButton: {
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savedInsightButton: {
+    backgroundColor: "#17301F",
+    borderColor: "#2E6B44",
+  },
+  saveInsightButtonText: {
+    color: "#E8ECF3",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  saveInsightErrorText: {
+    marginTop: 10,
+    color: "#FCA5A5",
+    textAlign: "center",
+    lineHeight: 20,
   },
   inputWrap: {
     gap: 12,

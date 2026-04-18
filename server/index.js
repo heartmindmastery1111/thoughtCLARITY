@@ -476,7 +476,98 @@ app.post("/sessions/save", async (req, res) => {
     });
   }
 });
+app.post("/talk/save-insight", async (req, res) => {
+  try {
+    const db = getDb();
 
+    const {
+      userId,
+      messages = [],
+      title = "",
+      summary = "",
+      metadata = {},
+    } = req.body || {};
+
+    const cleanUserId = cleanText(userId);
+
+    const cleanMessages = Array.isArray(messages)
+      ? messages
+          .filter(
+            (message) =>
+              message &&
+              (message.role === "user" || message.role === "assistant") &&
+              typeof message.content === "string" &&
+              message.content.trim().length > 0
+          )
+          .map((message) => ({
+            role: message.role,
+            content: message.content.trim(),
+          }))
+      : [];
+
+    if (!cleanUserId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (cleanMessages.length < 2) {
+      return res.status(400).json({
+        error: "At least 2 valid messages are required to save a talk insight.",
+      });
+    }
+
+    const id = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    const safeTitle = cleanText(title) || "Talk Insight";
+    const safeSummary =
+      cleanText(summary) || "Saved Talk It Through insight.";
+
+    const insight = {
+      id,
+      userId: cleanUserId,
+      type: "talk_insight",
+      title: safeTitle.length > 80 ? `${safeTitle.slice(0, 77)}...` : safeTitle,
+      summary:
+        safeSummary.length > 180
+          ? `${safeSummary.slice(0, 177)}...`
+          : safeSummary,
+      fullThread: cleanMessages,
+      messages: cleanMessages,
+      output: {
+        reflection: "",
+        fact: "",
+        mindStory: "",
+        clarityAnchor: "",
+        reminder: "",
+        oneSmallAction: "",
+      },
+      tags: [],
+      patternMarkers: [],
+      metadata: {
+        source: "talk_it_through",
+        appVersion: "v2",
+        ...metadata,
+      },
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    };
+
+    await db.collection("sessions").doc(id).set(insight);
+
+    return res.status(201).json({
+      ok: true,
+      insight,
+    });
+  } catch (error) {
+    console.error("POST /talk/save-insight error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to save talk insight.",
+    });
+  }
+});
 app.get("/sessions", async (req, res) => {
   try {
     const db = getDb();
