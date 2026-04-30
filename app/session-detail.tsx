@@ -14,6 +14,11 @@ import * as SecureStore from "expo-secure-store";
 const SESSIONS_URL = "https://thoughtclarity-api.onrender.com/sessions";
 const USER_ID_STORAGE_KEY = "return_anonymous_user_id";
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 type SavedSession = {
   id: string;
   userId: string;
@@ -45,6 +50,8 @@ type SavedSession = {
   tags?: string[];
   patternMarkers?: string[];
   metadata?: Record<string, unknown>;
+  messages?: ChatMessage[];
+  fullThread?: ChatMessage[];
 };
 
 async function getStoredValue(key: string) {
@@ -91,6 +98,11 @@ function formatDate(dateString?: string) {
   });
 }
 
+function getTypeLabel(type?: string) {
+  if (type === "talk_insight") return "Talk Insight";
+  return "Clarity Session";
+}
+
 export default function SessionDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -135,6 +147,9 @@ export default function SessionDetailScreen() {
     fetchSession();
   }, [fetchSession]);
 
+  const isTalkInsight = session?.type === "talk_insight";
+  const thread = session?.fullThread || session?.messages || [];
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
@@ -152,10 +167,7 @@ export default function SessionDetailScreen() {
             <Text style={styles.secondaryButtonText}>Back</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={fetchSession}
-          >
+          <TouchableOpacity style={styles.primaryButton} onPress={fetchSession}>
             <Text style={styles.primaryButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
@@ -176,61 +188,147 @@ export default function SessionDetailScreen() {
         ) : (
           <>
             <View style={styles.headerBox}>
-              <Text style={styles.sessionTitle}>
-                {session.title || "Saved Clarity Session"}
-              </Text>
+              <View style={styles.headerTopRow}>
+                <Text style={styles.sessionTitle}>
+                  {session.title || "Saved Session"}
+                </Text>
+
+                <View
+                  style={[
+                    styles.typeBadge,
+                    isTalkInsight ? styles.talkInsightBadge : styles.clarityBadge,
+                  ]}
+                >
+                  <Text style={styles.typeBadgeText}>
+                    {getTypeLabel(session.type)}
+                  </Text>
+                </View>
+              </View>
+
               {!!session.summary?.trim() && (
                 <Text style={styles.sessionSummary}>{session.summary}</Text>
               )}
+
               <Text style={styles.sessionMeta}>
                 {formatDate(session.createdAt)}
               </Text>
             </View>
 
-            {!!session.output?.reflection?.trim() && (
-              <View style={styles.miniSection}>
-                <Text style={styles.sectionTitle}>Reflection</Text>
-                <Text style={styles.sectionText}>{session.output.reflection}</Text>
-              </View>
-            )}
+            {isTalkInsight ? (
+              <View style={styles.threadWrap}>
+                <Text style={styles.threadTitle}>Saved Conversation</Text>
 
-            {!!session.output?.fact?.trim() && (
-              <View style={styles.miniSection}>
-                <Text style={styles.sectionTitle}>Fact</Text>
-                <Text style={styles.sectionText}>{session.output.fact}</Text>
-              </View>
-            )}
+                {thread.length === 0 ? (
+                  <View style={styles.messageBox}>
+                    <Text style={styles.errorText}>
+                      No saved messages were found for this talk insight.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.threadList}>
+                    {thread.map((message, index) => {
+                      const isAssistant = message.role === "assistant";
 
-            {!!session.output?.mindStory?.trim() && (
-              <View style={styles.miniSection}>
-                <Text style={styles.sectionTitle}>Mind Story</Text>
-                <Text style={styles.sectionText}>{session.output.mindStory}</Text>
-              </View>
-            )}
+                      return (
+                        <View
+                          key={`${message.role}-${index}`}
+                          style={[
+                            styles.messageRow,
+                            isAssistant
+                              ? styles.messageRowLeft
+                              : styles.messageRowRight,
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.messageBubble,
+                              isAssistant
+                                ? styles.assistantBubble
+                                : styles.userBubble,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.messageLabel,
+                                isAssistant
+                                  ? styles.assistantLabel
+                                  : styles.userLabel,
+                              ]}
+                            >
+                              {isAssistant ? "Talk It Through" : "You"}
+                            </Text>
 
-            {!!session.output?.clarityAnchor?.trim() && (
-              <View style={styles.anchorBox}>
-                <Text style={styles.anchorLabel}>Clarity Anchor</Text>
-                <Text style={styles.anchorText}>
-                  {session.output.clarityAnchor}
-                </Text>
+                            <Text
+                              style={[
+                                styles.messageText,
+                                isAssistant
+                                  ? styles.assistantText
+                                  : styles.userText,
+                              ]}
+                            >
+                              {message.content}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
-            )}
+            ) : (
+              <>
+                {!!session.output?.reflection?.trim() && (
+                  <View style={styles.miniSection}>
+                    <Text style={styles.sectionTitle}>Reflection</Text>
+                    <Text style={styles.sectionText}>
+                      {session.output.reflection}
+                    </Text>
+                  </View>
+                )}
 
-            {!!session.output?.reminder?.trim() && (
-              <View style={styles.softBox}>
-                <Text style={styles.softLabel}>Reminder</Text>
-                <Text style={styles.softText}>{session.output.reminder}</Text>
-              </View>
-            )}
+                {!!session.output?.fact?.trim() && (
+                  <View style={styles.miniSection}>
+                    <Text style={styles.sectionTitle}>Fact</Text>
+                    <Text style={styles.sectionText}>{session.output.fact}</Text>
+                  </View>
+                )}
 
-            {!!session.output?.oneSmallAction?.trim() && (
-              <View style={styles.softBox}>
-                <Text style={styles.softLabel}>One Small Action</Text>
-                <Text style={styles.softText}>
-                  {session.output.oneSmallAction}
-                </Text>
-              </View>
+                {!!session.output?.mindStory?.trim() && (
+                  <View style={styles.miniSection}>
+                    <Text style={styles.sectionTitle}>Mind Story</Text>
+                    <Text style={styles.sectionText}>
+                      {session.output.mindStory}
+                    </Text>
+                  </View>
+                )}
+
+                {!!session.output?.clarityAnchor?.trim() && (
+                  <View style={styles.anchorBox}>
+                    <Text style={styles.anchorLabel}>Clarity Anchor</Text>
+                    <Text style={styles.anchorText}>
+                      {session.output.clarityAnchor}
+                    </Text>
+                  </View>
+                )}
+
+                {!!session.output?.reminder?.trim() && (
+                  <View style={styles.softBox}>
+                    <Text style={styles.softLabel}>Reminder</Text>
+                    <Text style={styles.softText}>
+                      {session.output.reminder}
+                    </Text>
+                  </View>
+                )}
+
+                {!!session.output?.oneSmallAction?.trim() && (
+                  <View style={styles.softBox}>
+                    <Text style={styles.softLabel}>One Small Action</Text>
+                    <Text style={styles.softText}>
+                      {session.output.oneSmallAction}
+                    </Text>
+                  </View>
+                )}
+              </>
             )}
           </>
         )}
@@ -344,12 +442,40 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
   },
+  headerTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 8,
+  },
   sessionTitle: {
+    flex: 1,
     color: "#F5F7FB",
     fontSize: 22,
     fontWeight: "800",
     lineHeight: 30,
-    marginBottom: 8,
+  },
+  typeBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  clarityBadge: {
+    backgroundColor: "#171D2B",
+    borderColor: "#7C8BFF",
+  },
+  talkInsightBadge: {
+    backgroundColor: "#18261D",
+    borderColor: "#46A36B",
+  },
+  typeBadgeText: {
+    color: "#E8ECF3",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   sessionSummary: {
     color: "#A8B0BD",
@@ -426,5 +552,65 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     lineHeight: 22,
+  },
+  threadWrap: {
+    gap: 12,
+  },
+  threadTitle: {
+    color: "#F5F7FB",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 2,
+  },
+  threadList: {
+    gap: 12,
+  },
+  messageRow: {
+    width: "100%",
+    flexDirection: "row",
+  },
+  messageRowLeft: {
+    justifyContent: "flex-start",
+  },
+  messageRowRight: {
+    justifyContent: "flex-end",
+  },
+  messageBubble: {
+    maxWidth: "86%",
+    borderRadius: 18,
+    padding: 14,
+  },
+  assistantBubble: {
+    backgroundColor: "#101522",
+    borderWidth: 1,
+    borderColor: "#2A3247",
+  },
+  userBubble: {
+    backgroundColor: "#7C8BFF",
+  },
+  messageLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  assistantLabel: {
+    color: "#AEB8FF",
+    textTransform: "uppercase",
+  },
+  userLabel: {
+    color: "#0B0D12",
+    textTransform: "uppercase",
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  assistantText: {
+    color: "#E8ECF3",
+  },
+  userText: {
+    color: "#0B0D12",
+    fontWeight: "600",
   },
 });

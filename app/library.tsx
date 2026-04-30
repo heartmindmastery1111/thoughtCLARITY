@@ -46,6 +46,14 @@ type SavedSession = {
   tags?: string[];
   patternMarkers?: string[];
   metadata?: Record<string, unknown>;
+  messages?: {
+    role: "user" | "assistant";
+    content: string;
+  }[];
+  fullThread?: {
+    role: "user" | "assistant";
+    content: string;
+  }[];
 };
 
 async function getStoredValue(key: string) {
@@ -90,6 +98,11 @@ function formatDate(dateString?: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function getTypeLabel(type?: string) {
+  if (type === "talk_insight") return "Talk Insight";
+  return "Clarity Session";
 }
 
 export default function LibraryScreen() {
@@ -183,47 +196,74 @@ export default function LibraryScreen() {
           <View style={styles.messageBox}>
             <Text style={styles.emptyTitle}>No saved sessions yet</Text>
             <Text style={styles.emptyText}>
-              Complete a Clarity Session and tap Save Session. It will appear here.
+              Complete a Clarity Session or save a Talk Insight. It will appear here.
             </Text>
           </View>
         ) : (
           <View style={styles.listWrap}>
-            {sessions.map((session) => (
-              <TouchableOpacity
-                key={session.id}
-                style={styles.sessionCard}
-                activeOpacity={0.9}
-                onPress={() =>
-                  router.push({
-                    pathname: "/session-detail",
-                    params: { id: session.id },
-                  })
-                }
-              >
-                <Text style={styles.sessionTitle}>
-                  {session.title || "Saved Clarity Session"}
-                </Text>
+            {sessions.map((session) => {
+              const isTalkInsight = session.type === "talk_insight";
 
-                {!!session.summary?.trim() && (
-                  <Text style={styles.sessionSummary}>{session.summary}</Text>
-                )}
-
-                {!!session.output?.clarityAnchor?.trim() && (
-                  <View style={styles.anchorBox}>
-                    <Text style={styles.anchorLabel}>Clarity Anchor</Text>
-                    <Text style={styles.anchorText}>
-                      {session.output.clarityAnchor}
+              return (
+                <TouchableOpacity
+                  key={session.id}
+                  style={styles.sessionCard}
+                  activeOpacity={0.9}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/session-detail",
+                      params: { id: session.id },
+                    })
+                  }
+                >
+                  <View style={styles.cardHeaderRow}>
+                    <Text style={styles.sessionTitle}>
+                      {session.title || "Saved Session"}
                     </Text>
+                    <View
+                      style={[
+                        styles.typeBadge,
+                        isTalkInsight
+                          ? styles.talkInsightBadge
+                          : styles.clarityBadge,
+                      ]}
+                    >
+                      <Text style={styles.typeBadgeText}>
+                        {getTypeLabel(session.type)}
+                      </Text>
+                    </View>
                   </View>
-                )}
 
-                <Text style={styles.sessionMeta}>
-                  {formatDate(session.createdAt)}
-                </Text>
+                  {!!session.summary?.trim() && (
+                    <Text style={styles.sessionSummary}>{session.summary}</Text>
+                  )}
 
-                <Text style={styles.tapHint}>Tap to open full session</Text>
-              </TouchableOpacity>
-            ))}
+                  {!isTalkInsight && !!session.output?.clarityAnchor?.trim() && (
+                    <View style={styles.anchorBox}>
+                      <Text style={styles.anchorLabel}>Clarity Anchor</Text>
+                      <Text style={styles.anchorText}>
+                        {session.output.clarityAnchor}
+                      </Text>
+                    </View>
+                  )}
+
+                  {isTalkInsight && (
+                    <View style={styles.talkInsightBox}>
+                      <Text style={styles.talkInsightLabel}>Talk Insight</Text>
+                      <Text style={styles.talkInsightText}>
+                        Full conversation saved in the background.
+                      </Text>
+                    </View>
+                  )}
+
+                  <Text style={styles.sessionMeta}>
+                    {formatDate(session.createdAt)}
+                  </Text>
+
+                  <Text style={styles.tapHint}>Tap to open full session</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </View>
@@ -351,12 +391,40 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 16,
   },
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 8,
+  },
   sessionTitle: {
+    flex: 1,
     color: "#F5F7FB",
     fontSize: 20,
     fontWeight: "800",
     lineHeight: 28,
-    marginBottom: 8,
+  },
+  typeBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  clarityBadge: {
+    backgroundColor: "#171D2B",
+    borderColor: "#7C8BFF",
+  },
+  talkInsightBadge: {
+    backgroundColor: "#18261D",
+    borderColor: "#46A36B",
+  },
+  typeBadgeText: {
+    color: "#E8ECF3",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   sessionSummary: {
     color: "#A8B0BD",
@@ -385,6 +453,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     lineHeight: 24,
+  },
+  talkInsightBox: {
+    backgroundColor: "#18261D",
+    borderWidth: 1,
+    borderColor: "#46A36B",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  talkInsightLabel: {
+    color: "#8DE2AE",
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 8,
+    textTransform: "uppercase",
+  },
+  talkInsightText: {
+    color: "#E8ECF3",
+    fontSize: 15,
+    lineHeight: 22,
   },
   sessionMeta: {
     color: "#8E98AA",
