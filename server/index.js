@@ -95,6 +95,124 @@ function buildInputObject(answers) {
   };
 }
 
+const STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "because", "been", "being",
+  "but", "by", "for", "from", "had", "has", "have", "he", "her", "here",
+  "hers", "him", "his", "i", "if", "in", "into", "is", "it", "its", "just",
+  "like", "me", "my", "of", "on", "or", "our", "she", "so", "that", "the",
+  "their", "them", "there", "they", "this", "to", "too", "us", "was", "we",
+  "were", "what", "when", "where", "which", "who", "why", "with", "you",
+  "your", "yours", "im", "i’m", "dont", "don’t", "cant", "can’t", "ive", "i’ve",
+  "am", "will", "would", "could", "should", "than", "then", "very", "really",
+  "right", "now", "still", "more", "most", "much", "over", "under", "up",
+  "down", "out", "off", "all", "any", "some", "thing", "things"
+]);
+
+function normalizePatternText(text) {
+  return cleanText(String(text || "").toLowerCase())
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^a-z0-9'\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractKeywordsFromText(text) {
+  const normalized = normalizePatternText(text);
+  if (!normalized) return [];
+
+  return normalized
+    .split(" ")
+    .map((word) => word.trim())
+    .filter(Boolean)
+    .filter((word) => word.length >= 3)
+    .filter((word) => !STOP_WORDS.has(word));
+}
+
+function incrementCount(map, key, amount = 1) {
+  if (!key) return;
+  map.set(key, (map.get(key) || 0) + amount);
+}
+
+function topEntries(map, limit = 5) {
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([value, count]) => ({ value, count }));
+}
+
+function normalizeMindStory(text) {
+  const normalized = cleanText(text)
+    .replace(/^["']|["']$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized;
+}
+
+function buildPatternSummary(sessions = []) {
+  const keywordCounts = new Map();
+  const mindStoryCounts = new Map();
+  const titleCounts = new Map();
+  const typeCounts = new Map();
+
+  for (const session of sessions) {
+    const type = cleanText(session.type || "unknown");
+    incrementCount(typeCounts, type);
+
+    const title = cleanText(session.title);
+    const summary = cleanText(session.summary);
+
+    if (title) {
+      incrementCount(titleCounts, title);
+    }
+
+    const sourceTexts = [title, summary];
+
+    if (type === "clarity_session") {
+      const mindStory = normalizeMindStory(session?.output?.mindStory);
+      const reflection = cleanText(session?.output?.reflection);
+      const clarityAnchor = cleanText(session?.output?.clarityAnchor);
+
+      if (mindStory) {
+        incrementCount(mindStoryCounts, mindStory);
+        sourceTexts.push(mindStory);
+      }
+
+      sourceTexts.push(reflection, clarityAnchor);
+    }
+
+    if (type === "talk_insight") {
+      const messages = Array.isArray(session.messages)
+        ? session.messages
+        : Array.isArray(session.fullThread)
+        ? session.fullThread
+        : [];
+
+      for (const message of messages) {
+        if (message?.role === "user" || message?.role === "assistant") {
+          sourceTexts.push(cleanText(message.content));
+        }
+      }
+    }
+
+    const uniqueKeywords = new Set(
+      sourceTexts.flatMap((text) => extractKeywordsFromText(text))
+    );
+
+    for (const keyword of uniqueKeywords) {
+      incrementCount(keywordCounts, keyword);
+    }
+  }
+
+  return {
+    totalSavedItems: sessions.length,
+    byType: Object.fromEntries(typeCounts),
+    topKeywords: topEntries(keywordCounts, 6),
+    topMindStories: topEntries(mindStoryCounts, 5),
+    topTitles: topEntries(titleCounts, 5),
+  };
+}
+
 // --------------------
 // Section parsing helpers
 // --------------------
@@ -476,6 +594,7 @@ app.post("/sessions/save", async (req, res) => {
     });
   }
 });
+
 app.post("/talk/save-insight", async (req, res) => {
   try {
     const db = getDb();
@@ -568,6 +687,7 @@ app.post("/talk/save-insight", async (req, res) => {
     });
   }
 });
+
 app.get("/sessions", async (req, res) => {
   try {
     const db = getDb();
@@ -632,6 +752,38 @@ app.get("/sessions/:id", async (req, res) => {
     console.error("GET /sessions/:id error:", error);
     return res.status(500).json({
       error: error.message || "Failed to fetch session.",
+    });
+  }
+});
+
+app.get("/patterns", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.query.userId);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    const snapshot = await db
+      .collection("sessions")
+      .where("userId", "==", userId)
+      .get();
+
+    const sessions = snapshot.docs
+      .map((doc) => doc.data())
+      .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+    const patterns = buildPatternSummary(sessions);
+
+    return res.json({
+      ok: true,
+      patterns,
+    });
+  } catch (error) {
+    console.error("GET /patterns error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to build patterns.",
     });
   }
 });
