@@ -66,8 +66,10 @@ function buildInsightTitle(messages: ChatMessage[]) {
 function buildInsightSummary(messages: ChatMessage[]) {
   const lastAssistantMessage = [...messages]
     .reverse()
-    .find((message) => message.role === "assistant" && message.content !== STARTER_MESSAGE)
-    ?.content;
+    .find(
+      (message) =>
+        message.role === "assistant" && message.content !== STARTER_MESSAGE
+    )?.content;
 
   const source = (lastAssistantMessage || "Saved Talk It Through insight.").trim();
   return source.length > 180 ? `${source.slice(0, 177)}...` : source;
@@ -222,7 +224,10 @@ export default function TalkItThroughScreen() {
       style={styles.keyboardWrap}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.pageContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.card}>
           <Text style={styles.eyebrow}>THE RETURN: RECLAIM PEACE</Text>
           <Text style={styles.title}>Talk It Through</Text>
@@ -251,6 +256,7 @@ export default function TalkItThroughScreen() {
               ref={scrollViewRef}
               contentContainerStyle={styles.chatContent}
               onContentSizeChange={scrollToBottom}
+              keyboardShouldPersistTaps="handled"
             >
               {messages.map((message, index) => {
                 const isAssistant = message.role === "assistant";
@@ -357,7 +363,7 @@ export default function TalkItThroughScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -367,17 +373,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0B0D12",
   },
-  container: {
-    flex: 1,
+  pageContent: {
+    flexGrow: 1,
     backgroundColor: "#0B0D12",
     padding: 20,
-    justifyContent: "center",
     alignItems: "center",
   },
   card: {
     width: "100%",
     maxWidth: 760,
-    flex: 1,
     backgroundColor: "#151922",
     borderRadius: 28,
     padding: 20,
@@ -386,6 +390,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 10,
+    alignSelf: "center",
   },
   eyebrow: {
     color: "#7C8BFF",
@@ -412,8 +417,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   chatBox: {
-    flex: 1,
-    minHeight: 320,
+    minHeight: 260,
+    maxHeight: Platform.OS === "web" ? 360 : 420,
     backgroundColor: "#0F131B",
     borderWidth: 1,
     borderColor: "#232938",
