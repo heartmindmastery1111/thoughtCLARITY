@@ -622,6 +622,99 @@ function buildPatternSummary(sessions = []) {
   };
 }
 
+function buildPatternsReadingPrompt(patterns, sessions) {
+  const topStories = (patterns.topMindStories || [])
+    .map((item) => `- ${item.value} (${item.count})`)
+    .join("\n");
+
+  const topMarkers = (patterns.topPatternMarkers || [])
+    .map((item) => `- ${item.label || item.value} (${item.count})`)
+    .join("\n");
+
+  const topContexts = (patterns.topContexts || [])
+    .map((item) => `- ${item.label || item.value} (${item.count})`)
+    .join("\n");
+
+  const recentSessions = sessions.slice(0, 8).map((session, index) => {
+    const title = cleanText(session.title) || "Untitled";
+    const summary = cleanText(session.summary);
+    const mindStory = cleanText(session?.output?.mindStory);
+    const markers = Array.isArray(session.patternMarkers)
+      ? session.patternMarkers.join(", ")
+      : "";
+    const contexts = Array.isArray(session.contextMarkers)
+      ? session.contextMarkers.join(", ")
+      : "";
+
+    return [
+      `SESSION ${index + 1}`,
+      `Type: ${session.type}`,
+      `Title: ${title}`,
+      summary ? `Summary: ${summary}` : "",
+      mindStory ? `Mind Story: ${mindStory}` : "",
+      markers ? `Pattern Markers: ${markers}` : "",
+      contexts ? `Context Markers: ${contexts}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+
+  return `You are Pattern Reader inside The RETURN: Reclaim Peace.
+
+Your job is to read the user's saved patterns and connect them clearly.
+
+Do not sound clinical, robotic, vague, or like generic self-help.
+Do not give therapy disclaimers.
+Do not overpraise.
+Do not sound mystical.
+Stay grounded, precise, and insightful.
+
+What to do:
+- identify what pattern is repeating underneath the surface
+- connect repeated stories, repeated pattern markers, and repeated contexts
+- say what the user's mind seems to keep doing
+- mention what kind of situation seems to trigger it most
+- if the data is thin, say so simply
+- keep it readable and human
+
+Return plain text only in exactly this structure:
+
+HEADLINE
+[1 short sentence]
+
+WHAT KEEPS REPEATING
+[2-4 sentences]
+
+WHAT IT SEEMS TO LINK TO
+[2-4 sentences]
+
+WHERE TO WATCH CLOSELY
+[1-3 sentences]
+
+ONE CLEAN INSIGHT
+[1 short sentence]
+
+Here is the saved pattern data:
+
+TOTAL SAVED ITEMS
+${patterns.totalSavedItems}
+
+BY TYPE
+${JSON.stringify(patterns.byType || {}, null, 2)}
+
+TOP MIND STORIES
+${topStories || "- none"}
+
+TOP PATTERN MARKERS
+${topMarkers || "- none"}
+
+TOP CONTEXTS
+${topContexts || "- none"}
+
+RECENT SESSIONS
+${recentSessions.join("\n\n") || "none"}`;
+}
+
 // --------------------
 // Section parsing helpers
 // --------------------
@@ -1252,6 +1345,63 @@ app.get("/patterns", async (req, res) => {
     console.error("GET /patterns error:", error);
     return res.status(500).json({
       error: error.message || "Failed to build patterns.",
+    });
+  }
+});
+
+app.post("/patterns/read", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.body?.userId);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    const snapshot = await db
+      .collection("sessions")
+      .where("userId", "==", userId)
+      .get();
+
+    const sessions = snapshot.docs
+      .map((doc) => doc.data())
+      .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+    if (sessions.length === 0) {
+      return res.status(400).json({ error: "No saved sessions found for this user." });
+    }
+
+    const patterns = buildPatternSummary(sessions);
+    const prompt = buildPatternsReadingPrompt(patterns, sessions);
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5.2",
+      temperature: 0.4,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const reading = completion.choices?.[0]?.message?.content?.trim();
+
+    if (!reading) {
+      return res.status(500).json({
+        error: "No patterns reading returned from OpenAI.",
+      });
+    }
+
+    return res.json({
+      ok: true,
+      reading,
+      patterns,
+      debug: {
+        model: "gpt-5.2",
+        session_count: sessions.length,
+        commit_hint: "RETURN_PATTERNS_READER_V1",
+      },
+    });
+  } catch (error) {
+    console.error("POST /patterns/read error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to read patterns.",
     });
   }
 });
