@@ -1798,6 +1798,47 @@ app.get("/patterns/readings/:id", async (req, res) => {
   }
 });
 
+app.delete("/patterns/readings/:id", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.query.userId);
+    const readingId = cleanText(req.params.id);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (!readingId) {
+      return res.status(400).json({ error: "reading id is required." });
+    }
+
+    const docRef = db.collection("pattern_readings").doc(readingId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Patterns reading not found." });
+    }
+
+    const savedReading = doc.data();
+
+    if (savedReading.userId !== userId) {
+      return res.status(403).json({ error: "Not allowed to delete this patterns reading." });
+    }
+
+    await docRef.delete();
+
+    return res.json({
+      ok: true,
+      deletedId: readingId,
+    });
+  } catch (error) {
+    console.error("DELETE /patterns/readings/:id error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to delete patterns reading.",
+    });
+  }
+});
+
 app.post("/clarity", async (req, res) => {
   try {
     const { answers } = req.body;
