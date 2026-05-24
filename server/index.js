@@ -623,6 +623,10 @@ function buildPatternSummary(sessions = []) {
 }
 
 function buildPatternsReadingPrompt(patterns, sessions) {
+  const sessionCount = sessions.length;
+  const dataStrength =
+    sessionCount >= 6 ? "strong" : sessionCount >= 3 ? "moderate" : "early";
+
   const topStories = (patterns.topMindStories || [])
     .map((item) => `- ${item.value} (${item.count})`)
     .join("\n");
@@ -663,19 +667,28 @@ function buildPatternsReadingPrompt(patterns, sessions) {
 
 Your job is to read the user's saved patterns and connect them clearly.
 
-Do not sound clinical, robotic, vague, or like generic self-help.
-Do not give therapy disclaimers.
-Do not overpraise.
-Do not sound mystical.
-Stay grounded, precise, and insightful.
+Voice rules:
+- grounded, clear, direct, human
+- not clinical
+- not mystical
+- not generic self-help
+- not dramatic
+- not overly certain when the data is thin
+- do not overstate the conclusion
+- if there are only 1-2 sessions, explicitly frame it as an early read or early signal
+- if there are 3-5 sessions, treat it as a real pattern that still needs watching
+- if there are 6+ sessions, you may sound more confident
 
-What to do:
-- identify what pattern is repeating underneath the surface
-- connect repeated stories, repeated pattern markers, and repeated contexts
-- say what the user's mind seems to keep doing
-- mention what kind of situation seems to trigger it most
-- if the data is thin, say so simply
-- keep it readable and human
+Reasoning rules:
+- separate what is clearly repeated from what is only a likely link
+- use the repeated story, repeated pattern markers, repeated contexts, and recent sessions together
+- say what the mind seems to keep doing
+- say what kind of situation seems to trigger it most
+- say where the pattern may be linking into identity, safety, pressure, or control if the data supports that
+- do not invent trauma, history, or hidden causes
+- do not diagnose
+- do not make claims the data cannot support
+- if the data is early, say that clearly
 
 Return plain text only in exactly this structure:
 
@@ -694,7 +707,17 @@ WHERE TO WATCH CLOSELY
 ONE CLEAN INSIGHT
 [1 short sentence]
 
+Style target for each section:
+- HEADLINE: sharp, simple, readable in one pass
+- WHAT KEEPS REPEATING: only what seems clearly observable from the saved data
+- WHAT IT SEEMS TO LINK TO: use language like "may be linking to" or "seems tied to" when not fully proven
+- WHERE TO WATCH CLOSELY: practical and specific, not vague
+- ONE CLEAN INSIGHT: short and clean, not poetic
+
 Here is the saved pattern data:
+
+DATA STRENGTH
+${dataStrength}
 
 TOTAL SAVED ITEMS
 ${patterns.totalSavedItems}
@@ -1376,7 +1399,7 @@ app.post("/patterns/read", async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       model: "gpt-5.2",
-      temperature: 0.4,
+      temperature: 0.3,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -1395,7 +1418,7 @@ app.post("/patterns/read", async (req, res) => {
       debug: {
         model: "gpt-5.2",
         session_count: sessions.length,
-        commit_hint: "RETURN_PATTERNS_READER_V1",
+        commit_hint: "RETURN_PATTERNS_READER_V2_REFINED_TONE",
       },
     });
   } catch (error) {
