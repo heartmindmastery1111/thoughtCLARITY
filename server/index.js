@@ -756,6 +756,47 @@ app.get("/sessions/:id", async (req, res) => {
   }
 });
 
+app.delete("/sessions/:id", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.query.userId);
+    const sessionId = cleanText(req.params.id);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (!sessionId) {
+      return res.status(400).json({ error: "session id is required." });
+    }
+
+    const docRef = db.collection("sessions").doc(sessionId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    const session = doc.data();
+
+    if (session.userId !== userId) {
+      return res.status(403).json({ error: "Not allowed to delete this session." });
+    }
+
+    await docRef.delete();
+
+    return res.json({
+      ok: true,
+      deletedId: sessionId,
+    });
+  } catch (error) {
+    console.error("DELETE /sessions/:id error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to delete session.",
+    });
+  }
+});
+
 app.get("/patterns", async (req, res) => {
   try {
     const db = getDb();
