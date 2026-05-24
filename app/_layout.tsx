@@ -16,6 +16,9 @@ export default function RootLayout() {
         <Stack.Screen name="talk-it-through" />
         <Stack.Screen name="library" />
         <Stack.Screen name="session-detail" />
+        <Stack.Screen name="patterns-reading" />
+        <Stack.Screen name="patterns-reading-history" />
+        <Stack.Screen name="patterns-reading-detail" />
         <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       </Stack>
       <StatusBar style="auto" />
