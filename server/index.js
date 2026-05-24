@@ -108,6 +108,33 @@ const STOP_WORDS = new Set([
   "down", "out", "off", "all", "any", "some", "thing", "things"
 ]);
 
+const PATTERN_LABELS = {
+  self_doubt: "Self-Doubt",
+  not_good_enough: "Not Good Enough",
+  money_fear: "Money Fear",
+  pressure: "Pressure",
+  overwhelm: "Overwhelm",
+  anger: "Anger",
+  conflict: "Conflict",
+  rejection: "Rejection",
+  control: "Control",
+  performance_fear: "Performance Fear",
+  shame: "Shame",
+  avoidance: "Avoidance",
+  identity_threat: "Identity Threat",
+};
+
+const CONTEXT_LABELS = {
+  money: "Money",
+  work: "Work",
+  relationship: "Relationship",
+  family: "Family",
+  health: "Health",
+  feedback: "Feedback",
+  future: "Future",
+  self_image: "Self-Image",
+};
+
 function normalizePatternText(text) {
   return cleanText(String(text || "").toLowerCase())
     .replace(/[\u2018\u2019]/g, "'")
@@ -128,25 +155,417 @@ function extractKeywordsFromText(text) {
     .filter((word) => !STOP_WORDS.has(word));
 }
 
+function includesAny(text, terms) {
+  return terms.some((term) => text.includes(term));
+}
+
+function uniqueStrings(values = []) {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function incrementCount(map, key, amount = 1) {
   if (!key) return;
   map.set(key, (map.get(key) || 0) + amount);
 }
 
-function topEntries(map, limit = 5) {
+function topEntries(map, limit = 5, labelMap = null) {
   return [...map.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
-    .map(([value, count]) => ({ value, count }));
+    .map(([value, count]) => ({
+      value,
+      count,
+      label: labelMap?.[value] || value,
+    }));
 }
 
 function normalizeMindStory(text) {
-  const normalized = cleanText(text)
+  return cleanText(text)
     .replace(/^["']|["']$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
 
-  return normalized;
+function derivePatternMarkersFromTexts(texts = []) {
+  const combined = normalizePatternText(texts.join(" "));
+  if (!combined) return [];
+
+  const markers = [];
+
+  if (
+    includesAny(combined, [
+      "not good enough",
+      "not enough",
+      "not worthy",
+      "not worthy enough",
+      "not smart enough",
+      "not capable",
+      "not competent",
+      "not measuring up",
+    ])
+  ) {
+    markers.push("not_good_enough");
+  }
+
+  if (
+    includesAny(combined, [
+      "i am failing",
+      "failure",
+      "fraud",
+      "imposter",
+      "i can't do this",
+      "i cant do this",
+      "i am weak",
+      "i am broken",
+      "i am behind",
+      "i am not smart",
+      "i am not capable",
+      "useless",
+      "worthless",
+      "inadequate",
+    ])
+  ) {
+    markers.push("self_doubt");
+  }
+
+  if (
+    includesAny(combined, [
+      "money",
+      "rent",
+      "bills",
+      "saving",
+      "savings",
+      "debt",
+      "broke",
+      "financial",
+      "running out of money",
+      "not have enough",
+      "not enough for saving",
+    ])
+  ) {
+    markers.push("money_fear");
+  }
+
+  if (
+    includesAny(combined, [
+      "pressure",
+      "under pressure",
+      "too much",
+      "a lot on me",
+      "a lot on my shoulders",
+      "carry too much",
+      "carrying too much",
+    ])
+  ) {
+    markers.push("pressure");
+  }
+
+  if (
+    includesAny(combined, [
+      "overwhelm",
+      "overwhelmed",
+      "spiral",
+      "spiraling",
+      "panic",
+      "drowning",
+      "can't keep up",
+      "cant keep up",
+      "too much for me",
+    ])
+  ) {
+    markers.push("overwhelm");
+  }
+
+  if (includesAny(combined, ["angry", "anger", "furious", "mad", "resent"])) {
+    markers.push("anger");
+  }
+
+  if (
+    includesAny(combined, [
+      "argument",
+      "fight",
+      "conflict",
+      "tension",
+      "disrespect",
+      "crossed a line",
+      "crossed the line",
+    ])
+  ) {
+    markers.push("conflict");
+  }
+
+  if (
+    includesAny(combined, [
+      "rejected",
+      "ignored",
+      "abandoned",
+      "left out",
+      "not wanted",
+      "not chosen",
+      "rejection",
+    ])
+  ) {
+    markers.push("rejection");
+  }
+
+  if (
+    includesAny(combined, [
+      "control",
+      "can't control",
+      "cant control",
+      "uncertain",
+      "uncertainty",
+      "unknown",
+      "what if",
+    ])
+  ) {
+    markers.push("control");
+  }
+
+  if (
+    includesAny(combined, [
+      "feedback",
+      "comment",
+      "mistake",
+      "performance",
+      "job",
+      "work",
+      "app",
+      "interview",
+      "presentation",
+      "psychologist",
+    ])
+  ) {
+    markers.push("performance_fear");
+  }
+
+  if (
+    includesAny(combined, [
+      "ashamed",
+      "embarrassed",
+      "humiliated",
+      "shame",
+      "i feel stupid",
+      "i look stupid",
+    ])
+  ) {
+    markers.push("shame");
+  }
+
+  if (
+    includesAny(combined, [
+      "avoid",
+      "avoiding",
+      "procrastinating",
+      "procrastinate",
+      "numb",
+      "escape",
+      "hiding",
+      "hide",
+      "scrolling",
+      "smoking",
+    ])
+  ) {
+    markers.push("avoidance");
+  }
+
+  if (
+    includesAny(combined, [
+      "i am",
+      "who i am",
+      "means i am",
+      "proves i am",
+      "says i am",
+      "i'm",
+      "im ",
+    ])
+  ) {
+    markers.push("identity_threat");
+  }
+
+  return uniqueStrings(markers);
+}
+
+function deriveContextMarkersFromTexts(texts = []) {
+  const combined = normalizePatternText(texts.join(" "));
+  if (!combined) return [];
+
+  const contexts = [];
+
+  if (
+    includesAny(combined, [
+      "money",
+      "rent",
+      "bills",
+      "saving",
+      "savings",
+      "debt",
+      "broke",
+      "financial",
+      "salary",
+      "income",
+    ])
+  ) {
+    contexts.push("money");
+  }
+
+  if (
+    includesAny(combined, [
+      "work",
+      "job",
+      "boss",
+      "career",
+      "teaching",
+      "student",
+      "school",
+      "app",
+      "project",
+    ])
+  ) {
+    contexts.push("work");
+  }
+
+  if (
+    includesAny(combined, [
+      "relationship",
+      "partner",
+      "boyfriend",
+      "girlfriend",
+      "wife",
+      "husband",
+      "dating",
+      "love",
+    ])
+  ) {
+    contexts.push("relationship");
+  }
+
+  if (
+    includesAny(combined, [
+      "mom",
+      "mother",
+      "dad",
+      "father",
+      "brother",
+      "sister",
+      "family",
+      "parents",
+    ])
+  ) {
+    contexts.push("family");
+  }
+
+  if (
+    includesAny(combined, [
+      "health",
+      "body",
+      "back pain",
+      "pain",
+      "sick",
+      "ill",
+      "reflux",
+      "tired",
+      "fatigue",
+    ])
+  ) {
+    contexts.push("health");
+  }
+
+  if (
+    includesAny(combined, [
+      "feedback",
+      "comment",
+      "response",
+      "opinion",
+      "psychologist",
+      "criticism",
+      "criticised",
+      "criticized",
+    ])
+  ) {
+    contexts.push("feedback");
+  }
+
+  if (
+    includesAny(combined, [
+      "future",
+      "what if",
+      "later",
+      "tomorrow",
+      "next month",
+      "next week",
+      "soon",
+      "unknown",
+    ])
+  ) {
+    contexts.push("future");
+  }
+
+  if (
+    includesAny(combined, [
+      "how i look",
+      "what they think",
+      "self image",
+      "worth",
+      "value",
+      "identity",
+      "who i am",
+    ])
+  ) {
+    contexts.push("self_image");
+  }
+
+  return uniqueStrings(contexts);
+}
+
+function derivePatternDataForSession(session = {}) {
+  const type = cleanText(session.type || "unknown");
+  const title = cleanText(session.title);
+  const summary = cleanText(session.summary);
+  const texts = [title, summary];
+
+  if (type === "clarity_session") {
+    texts.push(
+      cleanText(session?.output?.reflection),
+      cleanText(session?.output?.fact),
+      cleanText(session?.output?.mindStory),
+      cleanText(session?.output?.clarityAnchor)
+    );
+
+    if (Array.isArray(session.answers)) {
+      texts.push(...session.answers.map((answer) => cleanText(answer)));
+    }
+  }
+
+  if (type === "talk_insight") {
+    const messages = Array.isArray(session.messages)
+      ? session.messages
+      : Array.isArray(session.fullThread)
+      ? session.fullThread
+      : [];
+
+    for (const message of messages) {
+      if (message?.role === "user" || message?.role === "assistant") {
+        texts.push(cleanText(message.content));
+      }
+    }
+  }
+
+  const patternMarkers = uniqueStrings([
+    ...(Array.isArray(session.patternMarkers) ? session.patternMarkers : []),
+    ...derivePatternMarkersFromTexts(texts),
+  ]);
+
+  const contextMarkers = uniqueStrings([
+    ...(Array.isArray(session.contextMarkers) ? session.contextMarkers : []),
+    ...deriveContextMarkersFromTexts(texts),
+  ]);
+
+  return {
+    texts,
+    patternMarkers,
+    contextMarkers,
+  };
 }
 
 function buildPatternSummary(sessions = []) {
@@ -154,49 +573,37 @@ function buildPatternSummary(sessions = []) {
   const mindStoryCounts = new Map();
   const titleCounts = new Map();
   const typeCounts = new Map();
+  const patternMarkerCounts = new Map();
+  const contextCounts = new Map();
 
   for (const session of sessions) {
     const type = cleanText(session.type || "unknown");
     incrementCount(typeCounts, type);
 
     const title = cleanText(session.title);
-    const summary = cleanText(session.summary);
-
     if (title) {
       incrementCount(titleCounts, title);
     }
 
-    const sourceTexts = [title, summary];
+    const { texts, patternMarkers, contextMarkers } = derivePatternDataForSession(session);
 
     if (type === "clarity_session") {
       const mindStory = normalizeMindStory(session?.output?.mindStory);
-      const reflection = cleanText(session?.output?.reflection);
-      const clarityAnchor = cleanText(session?.output?.clarityAnchor);
-
       if (mindStory) {
         incrementCount(mindStoryCounts, mindStory);
-        sourceTexts.push(mindStory);
       }
-
-      sourceTexts.push(reflection, clarityAnchor);
     }
 
-    if (type === "talk_insight") {
-      const messages = Array.isArray(session.messages)
-        ? session.messages
-        : Array.isArray(session.fullThread)
-        ? session.fullThread
-        : [];
+    for (const marker of patternMarkers) {
+      incrementCount(patternMarkerCounts, marker);
+    }
 
-      for (const message of messages) {
-        if (message?.role === "user" || message?.role === "assistant") {
-          sourceTexts.push(cleanText(message.content));
-        }
-      }
+    for (const context of contextMarkers) {
+      incrementCount(contextCounts, context);
     }
 
     const uniqueKeywords = new Set(
-      sourceTexts.flatMap((text) => extractKeywordsFromText(text))
+      texts.flatMap((text) => extractKeywordsFromText(text))
     );
 
     for (const keyword of uniqueKeywords) {
@@ -207,8 +614,10 @@ function buildPatternSummary(sessions = []) {
   return {
     totalSavedItems: sessions.length,
     byType: Object.fromEntries(typeCounts),
-    topKeywords: topEntries(keywordCounts, 6),
     topMindStories: topEntries(mindStoryCounts, 5),
+    topPatternMarkers: topEntries(patternMarkerCounts, 5, PATTERN_LABELS),
+    topContexts: topEntries(contextCounts, 5, CONTEXT_LABELS),
+    topKeywords: topEntries(keywordCounts, 6),
     topTitles: topEntries(titleCounts, 5),
   };
 }
@@ -558,18 +967,31 @@ app.post("/sessions/save", async (req, res) => {
     const nowIso = new Date().toISOString();
     const nowMs = Date.now();
 
+    const titleToSave = buildSessionTitle(title, cleanSections);
+    const summaryToSave = buildSessionSummary(summary, cleanSections);
+    const patternTexts = [
+      titleToSave,
+      summaryToSave,
+      cleanSections.reflection,
+      cleanSections.fact,
+      cleanSections.mindStory,
+      cleanSections.clarityAnchor,
+      ...cleanAnswers,
+    ];
+
     const session = {
       id,
       userId: cleanUserId,
       type: "clarity_session",
-      title: buildSessionTitle(title, cleanSections),
-      summary: buildSessionSummary(summary, cleanSections),
+      title: titleToSave,
+      summary: summaryToSave,
       input: buildInputObject(cleanAnswers),
       answers: cleanAnswers,
       output: cleanSections,
       rawResult: cleanRawResult,
       tags: [],
-      patternMarkers: [],
+      patternMarkers: derivePatternMarkersFromTexts(patternTexts),
+      contextMarkers: deriveContextMarkersFromTexts(patternTexts),
       metadata: {
         source: "clarity_session",
         appVersion: "v2",
@@ -639,18 +1061,22 @@ app.post("/talk/save-insight", async (req, res) => {
     const nowMs = Date.now();
 
     const safeTitle = cleanText(title) || "Talk Insight";
-    const safeSummary =
-      cleanText(summary) || "Saved Talk It Through insight.";
+    const safeSummary = cleanText(summary) || "Saved Talk It Through insight.";
+    const titleToSave = safeTitle.length > 80 ? `${safeTitle.slice(0, 77)}...` : safeTitle;
+    const summaryToSave =
+      safeSummary.length > 180 ? `${safeSummary.slice(0, 177)}...` : safeSummary;
+    const patternTexts = [
+      titleToSave,
+      summaryToSave,
+      ...cleanMessages.map((message) => message.content),
+    ];
 
     const insight = {
       id,
       userId: cleanUserId,
       type: "talk_insight",
-      title: safeTitle.length > 80 ? `${safeTitle.slice(0, 77)}...` : safeTitle,
-      summary:
-        safeSummary.length > 180
-          ? `${safeSummary.slice(0, 177)}...`
-          : safeSummary,
+      title: titleToSave,
+      summary: summaryToSave,
       fullThread: cleanMessages,
       messages: cleanMessages,
       output: {
@@ -662,7 +1088,8 @@ app.post("/talk/save-insight", async (req, res) => {
         oneSmallAction: "",
       },
       tags: [],
-      patternMarkers: [],
+      patternMarkers: derivePatternMarkersFromTexts(patternTexts),
+      contextMarkers: deriveContextMarkersFromTexts(patternTexts),
       metadata: {
         source: "talk_it_through",
         appVersion: "v2",
