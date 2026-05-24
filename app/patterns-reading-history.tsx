@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   RefreshControl,
   ScrollView,
@@ -85,6 +86,7 @@ export default function PatternsReadingHistoryScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
   const [readings, setReadings] = useState<SavedPatternsReading[]>([]);
 
@@ -125,6 +127,65 @@ export default function PatternsReadingHistoryScreen() {
     fetchHistory();
   }, [fetchHistory]);
 
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!id || deletingId) return;
+
+      const runDelete = async () => {
+        try {
+          setDeletingId(id);
+          setError("");
+
+          const userId = await getAnonymousUserId();
+
+          const response = await fetch(
+            `${PATTERNS_READINGS_URL}/${encodeURIComponent(id)}?userId=${encodeURIComponent(userId)}`,
+            {
+              method: "DELETE",
+            }
+          );
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            throw new Error(result?.error || "Failed to delete patterns reading.");
+          }
+
+          setReadings((prev) => prev.filter((item) => item.id !== id));
+        } catch (err) {
+          setError(
+            err instanceof Error ? err.message : "Failed to delete patterns reading."
+          );
+        } finally {
+          setDeletingId("");
+        }
+      };
+
+      if (Platform.OS === "web") {
+        const confirmed = window.confirm("Delete this saved pattern read?");
+        if (!confirmed) return;
+        await runDelete();
+        return;
+      }
+
+      Alert.alert(
+        "Delete saved read",
+        "Delete this saved pattern read?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              void runDelete();
+            },
+          },
+        ]
+      );
+    },
+    [deletingId]
+  );
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
@@ -158,14 +219,16 @@ export default function PatternsReadingHistoryScreen() {
           </TouchableOpacity>
         </View>
 
+        {!!error && !loading && (
+          <View style={styles.messageBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
         {loading ? (
           <View style={styles.loadingBox}>
             <ActivityIndicator size="large" />
             <Text style={styles.loadingText}>Loading saved pattern reads...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.messageBox}>
-            <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : readings.length === 0 ? (
           <View style={styles.messageBox}>
@@ -180,53 +243,66 @@ export default function PatternsReadingHistoryScreen() {
               const totalSaved = item.patternsSnapshot?.totalSavedItems || 0;
               const clarityCount = item.patternsSnapshot?.byType?.clarity_session || 0;
               const talkCount = item.patternsSnapshot?.byType?.talk_insight || 0;
+              const isDeleting = deletingId === item.id;
 
               return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.historyCard}
-                  activeOpacity={0.9}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/patterns-reading-detail",
-                      params: { id: item.id },
-                    })
-                  }
-                >
-                  <View style={styles.historyHeaderRow}>
-                    <Text style={styles.historyTitle}>
-                      {item.title || "Patterns Read"}
-                    </Text>
+                <View key={item.id} style={styles.historyCard}>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/patterns-reading-detail",
+                        params: { id: item.id },
+                      })
+                    }
+                  >
+                    <View style={styles.historyHeaderRow}>
+                      <Text style={styles.historyTitle}>
+                        {item.title || "Patterns Read"}
+                      </Text>
 
-                    <View style={styles.typeBadge}>
-                      <Text style={styles.typeBadgeText}>Patterns Read</Text>
-                    </View>
-                  </View>
-
-                  {!!item.summary?.trim() && (
-                    <Text style={styles.historySummary}>{item.summary}</Text>
-                  )}
-
-                  <View style={styles.statsRow}>
-                    <View style={styles.statPill}>
-                      <Text style={styles.statValue}>{totalSaved}</Text>
-                      <Text style={styles.statLabel}>Saved</Text>
+                      <View style={styles.typeBadge}>
+                        <Text style={styles.typeBadgeText}>Patterns Read</Text>
+                      </View>
                     </View>
 
-                    <View style={styles.statPill}>
-                      <Text style={styles.statValue}>{clarityCount}</Text>
-                      <Text style={styles.statLabel}>Clarity</Text>
+                    {!!item.summary?.trim() && (
+                      <Text style={styles.historySummary}>{item.summary}</Text>
+                    )}
+
+                    <View style={styles.statsRow}>
+                      <View style={styles.statPill}>
+                        <Text style={styles.statValue}>{totalSaved}</Text>
+                        <Text style={styles.statLabel}>Saved</Text>
+                      </View>
+
+                      <View style={styles.statPill}>
+                        <Text style={styles.statValue}>{clarityCount}</Text>
+                        <Text style={styles.statLabel}>Clarity</Text>
+                      </View>
+
+                      <View style={styles.statPill}>
+                        <Text style={styles.statValue}>{talkCount}</Text>
+                        <Text style={styles.statLabel}>Talk</Text>
+                      </View>
                     </View>
 
-                    <View style={styles.statPill}>
-                      <Text style={styles.statValue}>{talkCount}</Text>
-                      <Text style={styles.statLabel}>Talk</Text>
-                    </View>
-                  </View>
+                    <Text style={styles.historyMeta}>{formatDate(item.createdAt)}</Text>
+                    <Text style={styles.tapHint}>Tap to open full read</Text>
+                  </TouchableOpacity>
 
-                  <Text style={styles.historyMeta}>{formatDate(item.createdAt)}</Text>
-                  <Text style={styles.tapHint}>Tap to open full read</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.deleteButton, isDeleting && styles.buttonDisabled]}
+                    onPress={() => handleDelete(item.id)}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? (
+                      <ActivityIndicator color="#FDE2E2" />
+                    ) : (
+                      <Text style={styles.deleteButtonText}>Delete</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               );
             })}
           </View>
@@ -326,6 +402,7 @@ const styles = StyleSheet.create({
     borderColor: "#232938",
     borderRadius: 18,
     padding: 18,
+    marginBottom: 18,
   },
   errorText: {
     color: "#FCA5A5",
@@ -428,5 +505,23 @@ const styles = StyleSheet.create({
     color: "#7C8BFF",
     fontSize: 13,
     fontWeight: "700",
+    marginBottom: 12,
+  },
+  deleteButton: {
+    backgroundColor: "#2A1418",
+    borderWidth: 1,
+    borderColor: "#7A2832",
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButtonText: {
+    color: "#FDE2E2",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  buttonDisabled: {
+    opacity: 0.55,
   },
 });
