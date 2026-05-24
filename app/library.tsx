@@ -13,7 +13,24 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 
 const SESSIONS_URL = "https://thoughtclarity-api.onrender.com/sessions";
+const PATTERNS_URL = "https://thoughtclarity-api.onrender.com/patterns";
 const USER_ID_STORAGE_KEY = "return_anonymous_user_id";
+
+type PatternEntry = {
+  value: string;
+  count: number;
+  label?: string;
+};
+
+type PatternsResponse = {
+  totalSavedItems: number;
+  byType: Record<string, number>;
+  topMindStories: PatternEntry[];
+  topPatternMarkers: PatternEntry[];
+  topContexts: PatternEntry[];
+  topKeywords?: PatternEntry[];
+  topTitles?: PatternEntry[];
+};
 
 type SavedSession = {
   id: string;
@@ -45,6 +62,7 @@ type SavedSession = {
   rawResult?: string;
   tags?: string[];
   patternMarkers?: string[];
+  contextMarkers?: string[];
   metadata?: Record<string, unknown>;
   messages?: {
     role: "user" | "assistant";
@@ -109,11 +127,15 @@ export default function LibraryScreen() {
   const router = useRouter();
 
   const [sessions, setSessions] = useState<SavedSession[]>([]);
+  const [patterns, setPatterns] = useState<PatternsResponse | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
 
-  const fetchSessions = useCallback(async (isRefresh = false) => {
+  const [error, setError] = useState("");
+  const [patternsError, setPatternsError] = useState("");
+
+  const fetchLibraryData = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -121,21 +143,33 @@ export default function LibraryScreen() {
     }
 
     setError("");
+    setPatternsError("");
 
     try {
       const userId = await getAnonymousUserId();
 
-      const response = await fetch(
-        `${SESSIONS_URL}?userId=${encodeURIComponent(userId)}`
-      );
+      const [sessionsResponse, patternsResponse] = await Promise.all([
+        fetch(`${SESSIONS_URL}?userId=${encodeURIComponent(userId)}`),
+        fetch(`${PATTERNS_URL}?userId=${encodeURIComponent(userId)}`),
+      ]);
 
-      const data = await response.json();
+      const sessionsData = await sessionsResponse.json();
+      const patternsData = await patternsResponse.json();
 
-      if (!response.ok) {
-        throw new Error(data?.error || "Failed to fetch saved sessions.");
+      if (!sessionsResponse.ok) {
+        throw new Error(
+          sessionsData?.error || "Failed to fetch saved sessions."
+        );
       }
 
-      setSessions(Array.isArray(data?.sessions) ? data.sessions : []);
+      setSessions(Array.isArray(sessionsData?.sessions) ? sessionsData.sessions : []);
+
+      if (patternsResponse.ok) {
+        setPatterns(patternsData?.patterns || null);
+      } else {
+        setPatterns(null);
+        setPatternsError(patternsData?.error || "Failed to fetch patterns.");
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to fetch saved sessions."
@@ -147,8 +181,10 @@ export default function LibraryScreen() {
   }, []);
 
   useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+    fetchLibraryData();
+  }, [fetchLibraryData]);
+
+  const hasPatterns = !!patterns && patterns.totalSavedItems > 0;
 
   return (
     <ScrollView
@@ -156,7 +192,7 @@ export default function LibraryScreen() {
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          onRefresh={() => fetchSessions(true)}
+          onRefresh={() => fetchLibraryData(true)}
         />
       }
     >
@@ -177,11 +213,90 @@ export default function LibraryScreen() {
 
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => fetchSessions(true)}
+            onPress={() => fetchLibraryData(true)}
           >
             <Text style={styles.primaryButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
+
+        {!loading && !error && (
+          <View style={styles.patternsCard}>
+            <View style={styles.patternsHeaderRow}>
+              <Text style={styles.patternsTitle}>Your Patterns</Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.readPatternsButton,
+                  !hasPatterns && styles.buttonDisabled,
+                ]}
+                onPress={() => router.push("/patterns-reading")}
+                disabled={!hasPatterns}
+              >
+                <Text style={styles.readPatternsButtonText}>Read My Patterns</Text>
+              </TouchableOpacity>
+            </View>
+
+            {patternsError ? (
+              <Text style={styles.patternsErrorText}>{patternsError}</Text>
+            ) : !hasPatterns ? (
+              <Text style={styles.patternsEmptyText}>
+                Save more sessions to start seeing patterns.
+              </Text>
+            ) : (
+              <>
+                <View style={styles.patternStatsRow}>
+                  <View style={styles.patternStatPill}>
+                    <Text style={styles.patternStatValue}>
+                      {patterns.totalSavedItems}
+                    </Text>
+                    <Text style={styles.patternStatLabel}>Saved</Text>
+                  </View>
+
+                  <View style={styles.patternStatPill}>
+                    <Text style={styles.patternStatValue}>
+                      {patterns.byType?.clarity_session || 0}
+                    </Text>
+                    <Text style={styles.patternStatLabel}>Clarity</Text>
+                  </View>
+
+                  <View style={styles.patternStatPill}>
+                    <Text style={styles.patternStatValue}>
+                      {patterns.byType?.talk_insight || 0}
+                    </Text>
+                    <Text style={styles.patternStatLabel}>Talk</Text>
+                  </View>
+                </View>
+
+                {patterns.topMindStories?.length > 0 && (
+                  <View style={styles.patternLineWrap}>
+                    <Text style={styles.patternLineLabel}>Most repeated story</Text>
+                    <Text style={styles.patternLineText}>
+                      “{patterns.topMindStories[0].value}”
+                    </Text>
+                  </View>
+                )}
+
+                {patterns.topPatternMarkers?.length > 0 && (
+                  <View style={styles.patternLineWrap}>
+                    <Text style={styles.patternLineLabel}>Repeated pattern</Text>
+                    <Text style={styles.patternLineText}>
+                      {patterns.topPatternMarkers[0].label || patterns.topPatternMarkers[0].value}
+                    </Text>
+                  </View>
+                )}
+
+                {patterns.topContexts?.length > 0 && (
+                  <View style={styles.patternLineWrap}>
+                    <Text style={styles.patternLineLabel}>Repeated context</Text>
+                    <Text style={styles.patternLineText}>
+                      {patterns.topContexts[0].label || patterns.topContexts[0].value}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
 
         {loading ? (
           <View style={styles.loadingBox}>
@@ -344,6 +459,102 @@ const styles = StyleSheet.create({
     color: "#E8ECF3",
     fontSize: 15,
     fontWeight: "700",
+  },
+  patternsCard: {
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 18,
+  },
+  patternsHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  patternsTitle: {
+    color: "#F5F7FB",
+    fontSize: 20,
+    fontWeight: "800",
+    flex: 1,
+  },
+  readPatternsButton: {
+    backgroundColor: "#171D2B",
+    borderWidth: 1,
+    borderColor: "#7C8BFF",
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  readPatternsButtonText: {
+    color: "#E8ECF3",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  patternsErrorText: {
+    color: "#FCA5A5",
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  patternsEmptyText: {
+    color: "#A8B0BD",
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  patternStatsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  patternStatPill: {
+    flex: 1,
+    backgroundColor: "#151922",
+    borderWidth: 1,
+    borderColor: "#2A3247",
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: "center",
+  },
+  patternStatValue: {
+    color: "#F5F7FB",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  patternStatLabel: {
+    color: "#A8B0BD",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  patternLineWrap: {
+    backgroundColor: "#151922",
+    borderWidth: 1,
+    borderColor: "#2A3247",
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 10,
+  },
+  patternLineLabel: {
+    color: "#7C8BFF",
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  patternLineText: {
+    color: "#E8ECF3",
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
   },
   loadingBox: {
     minHeight: 220,
