@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 
 const READ_PATTERNS_URL = "https://thoughtclarity-api.onrender.com/patterns/read";
+const SAVE_PATTERNS_READ_URL = "https://thoughtclarity-api.onrender.com/patterns/read/save";
 const USER_ID_STORAGE_KEY = "return_anonymous_user_id";
 
 type PatternsReadResponse = {
@@ -87,7 +88,9 @@ export default function PatternsReadingScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
   const [data, setData] = useState<PatternsReadResponse | null>(null);
 
   const fetchReading = useCallback(async (isRefresh = false) => {
@@ -98,6 +101,7 @@ export default function PatternsReadingScreen() {
     }
 
     setError("");
+    setSaveMessage("");
 
     try {
       const userId = await getAnonymousUserId();
@@ -129,7 +133,44 @@ export default function PatternsReadingScreen() {
     fetchReading();
   }, [fetchReading]);
 
+  const handleSaveRead = useCallback(async () => {
+    if (!data?.reading || !data?.patterns || saving) return;
+
+    setSaving(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const userId = await getAnonymousUserId();
+
+      const response = await fetch(SAVE_PATTERNS_READ_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          reading: data.reading,
+          patterns: data.patterns,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to save this read.");
+      }
+
+      setSaveMessage("Patterns read saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save this read.");
+    } finally {
+      setSaving(false);
+    }
+  }, [data, saving]);
+
   const sections = parseReadingSections(data?.reading || "");
+  const canSave = !!data?.reading && !!data?.patterns && !loading;
 
   return (
     <ScrollView
@@ -163,6 +204,29 @@ export default function PatternsReadingScreen() {
             <Text style={styles.primaryButtonText}>Refresh Read</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.saveButton, (!canSave || saving) && styles.buttonDisabled]}
+            onPress={handleSaveRead}
+            disabled={!canSave || saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="#E8ECF3" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save This Read</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondaryWideButton}
+            onPress={() => router.push("/patterns-reading-history")}
+          >
+            <Text style={styles.secondaryButtonText}>View Past Reads</Text>
+          </TouchableOpacity>
+        </View>
+
+        {!!saveMessage && <Text style={styles.successText}>{saveMessage}</Text>}
 
         {loading ? (
           <View style={styles.loadingBox}>
@@ -279,7 +343,7 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: "row",
     gap: 12,
-    marginBottom: 18,
+    marginBottom: 14,
   },
   primaryButton: {
     flex: 1,
@@ -306,10 +370,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  secondaryWideButton: {
+    flex: 1,
+    backgroundColor: "#0F131B",
+    borderWidth: 1,
+    borderColor: "#232938",
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   secondaryButtonText: {
     color: "#E8ECF3",
     fontSize: 15,
     fontWeight: "700",
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: "#171D2B",
+    borderWidth: 1,
+    borderColor: "#7C8BFF",
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveButtonText: {
+    color: "#E8ECF3",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  buttonDisabled: {
+    opacity: 0.45,
+  },
+  successText: {
+    color: "#86EFAC",
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 14,
   },
   loadingBox: {
     minHeight: 240,
