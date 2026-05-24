@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -110,6 +111,7 @@ export default function SessionDetailScreen() {
 
   const [session, setSession] = useState<SavedSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   const fetchSession = useCallback(async () => {
@@ -147,6 +149,61 @@ export default function SessionDetailScreen() {
     fetchSession();
   }, [fetchSession]);
 
+  const handleDelete = useCallback(async () => {
+    if (!sessionId || deleting) return;
+
+    const runDelete = async () => {
+      setDeleting(true);
+      setError("");
+
+      try {
+        const userId = await getAnonymousUserId();
+
+        const response = await fetch(
+          `${SESSIONS_URL}/${encodeURIComponent(sessionId)}?userId=${encodeURIComponent(userId)}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Failed to delete session.");
+        }
+
+        router.replace("/library");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete session.");
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "Delete this saved session? This cannot be undone."
+      );
+      if (confirmed) {
+        runDelete();
+      }
+      return;
+    }
+
+    Alert.alert(
+      "Delete saved session?",
+      "This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: runDelete,
+        },
+      ]
+    );
+  }, [sessionId, deleting, router]);
+
   const isTalkInsight = session?.type === "talk_insight";
   const thread = session?.fullThread || session?.messages || [];
 
@@ -171,6 +228,22 @@ export default function SessionDetailScreen() {
             <Text style={styles.primaryButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
+
+        {!loading && !error && session && (
+          <View style={styles.deleteWrap}>
+            <TouchableOpacity
+              style={[styles.deleteButton, deleting && styles.buttonDisabled]}
+              onPress={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <ActivityIndicator color="#FECACA" />
+              ) : (
+                <Text style={styles.deleteButtonText}>Delete Session</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {loading ? (
           <View style={styles.loadingBox}>
@@ -410,6 +483,26 @@ const styles = StyleSheet.create({
     color: "#E8ECF3",
     fontSize: 15,
     fontWeight: "700",
+  },
+  deleteWrap: {
+    marginBottom: 18,
+  },
+  deleteButton: {
+    backgroundColor: "#2A1114",
+    borderWidth: 1,
+    borderColor: "#7F1D1D",
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButtonText: {
+    color: "#FECACA",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  buttonDisabled: {
+    opacity: 0.55,
   },
   loadingBox: {
     minHeight: 220,
