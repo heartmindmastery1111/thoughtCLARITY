@@ -112,16 +112,20 @@ const PATTERN_LABELS = {
   self_doubt: "Self-Doubt",
   not_good_enough: "Not Good Enough",
   money_fear: "Money Fear",
+  scarcity: "Scarcity",
+  safety_threat: "Safety Threat",
   pressure: "Pressure",
   overwhelm: "Overwhelm",
   anger: "Anger",
   conflict: "Conflict",
   rejection: "Rejection",
-  control: "Control",
+  control: "Control Strain",
   performance_fear: "Performance Fear",
   shame: "Shame",
   avoidance: "Avoidance",
   identity_threat: "Identity Threat",
+  helplessness: "Helplessness",
+  hypervigilance: "Hypervigilance",
 };
 
 const CONTEXT_LABELS = {
@@ -133,6 +137,14 @@ const CONTEXT_LABELS = {
   feedback: "Feedback",
   future: "Future",
   self_image: "Self-Image",
+};
+
+const TRIGGER_LABELS = {
+  body_first: "Body-First Trigger",
+  uncertainty_trigger: "Uncertainty Trigger",
+  feedback_trigger: "Feedback Trigger",
+  spiral_trigger: "Thought Spiral",
+  pressure_buildup: "Pressure Buildup",
 };
 
 function normalizePatternText(text) {
@@ -157,6 +169,16 @@ function extractKeywordsFromText(text) {
 
 function includesAny(text, terms) {
   return terms.some((term) => text.includes(term));
+}
+
+function countMatches(text, terms) {
+  return terms.reduce((count, term) => {
+    return count + (text.includes(term) ? 1 : 0);
+  }, 0);
+}
+
+function hasMinMatches(text, terms, minimum = 1) {
+  return countMatches(text, terms) >= minimum;
 }
 
 function uniqueStrings(values = []) {
@@ -244,6 +266,36 @@ function derivePatternMarkersFromTexts(texts = []) {
     ])
   ) {
     markers.push("money_fear");
+  }
+
+  if (
+    hasMinMatches(
+      combined,
+      [
+        "running out",
+        "not enough",
+        "bills",
+        "debt",
+        "rent",
+        "saving",
+        "savings",
+        "financial",
+        "money",
+        "income",
+      ],
+      2
+    )
+  ) {
+    markers.push("scarcity");
+  }
+
+  if (
+    (includesAny(combined, ["unsafe", "danger", "threat", "emergency"]) ||
+      includesAny(combined, ["running out of money", "not enough", "what if"])) &&
+    (includesAny(combined, ["chest", "tight", "tightening", "contracted", "body", "panic"]) ||
+      includesAny(combined, ["okay", "ok", "safe", "stability", "stable"]))
+  ) {
+    markers.push("safety_threat");
   }
 
   if (
@@ -383,6 +435,35 @@ function derivePatternMarkersFromTexts(texts = []) {
     markers.push("identity_threat");
   }
 
+  if (
+    includesAny(combined, [
+      "can't handle",
+      "cant handle",
+      "cannot handle",
+      "stuck",
+      "trapped",
+      "helpless",
+      "powerless",
+      "no way out",
+    ])
+  ) {
+    markers.push("helplessness");
+  }
+
+  if (
+    includesAny(combined, [
+      "scan",
+      "scanning",
+      "watching for",
+      "waiting for",
+      "what if",
+      "something happens",
+      "if something happens",
+    ])
+  ) {
+    markers.push("hypervigilance");
+  }
+
   return uniqueStrings(markers);
 }
 
@@ -404,6 +485,8 @@ function deriveContextMarkersFromTexts(texts = []) {
       "financial",
       "salary",
       "income",
+      "budget",
+      "finances",
     ])
   ) {
     contexts.push("money");
@@ -456,16 +539,35 @@ function deriveContextMarkersFromTexts(texts = []) {
   }
 
   if (
+    hasMinMatches(
+      combined,
+      [
+        "health",
+        "symptom",
+        "symptoms",
+        "appointment",
+        "doctor",
+        "hospital",
+        "medication",
+        "reflux",
+        "back pain",
+        "injury",
+        "sick",
+        "ill",
+        "fatigue",
+        "tired all the time",
+        "pain",
+      ],
+      2
+    ) ||
     includesAny(combined, [
-      "health",
-      "body",
+      "health related",
+      "health-related",
+      "doctor appointment",
+      "medical bill",
+      "medical bills",
       "back pain",
-      "pain",
-      "sick",
-      "ill",
-      "reflux",
-      "tired",
-      "fatigue",
+      "acid reflux",
     ])
   ) {
     contexts.push("health");
@@ -510,12 +612,87 @@ function deriveContextMarkersFromTexts(texts = []) {
       "value",
       "identity",
       "who i am",
+      "being okay",
+      "okay as a person",
     ])
   ) {
     contexts.push("self_image");
   }
 
   return uniqueStrings(contexts);
+}
+
+function deriveTriggerMarkersFromTexts(texts = []) {
+  const combined = normalizePatternText(texts.join(" "));
+  if (!combined) return [];
+
+  const triggers = [];
+
+  if (
+    includesAny(combined, [
+      "chest",
+      "tight",
+      "tightening",
+      "contracted",
+      "heavy feeling",
+      "body shows",
+      "body tracks",
+    ])
+  ) {
+    triggers.push("body_first");
+  }
+
+  if (
+    includesAny(combined, [
+      "what if",
+      "uncertain",
+      "uncertainty",
+      "unknown",
+      "running out",
+      "not enough",
+    ])
+  ) {
+    triggers.push("uncertainty_trigger");
+  }
+
+  if (
+    includesAny(combined, [
+      "feedback",
+      "comment",
+      "response",
+      "criticism",
+      "psychologist",
+    ])
+  ) {
+    triggers.push("feedback_trigger");
+  }
+
+  if (
+    includesAny(combined, [
+      "spiral",
+      "spiraling",
+      "pulls in more fears",
+      "more fears",
+      "stacking fears",
+      "cascade",
+    ])
+  ) {
+    triggers.push("spiral_trigger");
+  }
+
+  if (
+    includesAny(combined, [
+      "pressure",
+      "builds up",
+      "buildup",
+      "carrying too much",
+      "too much on me",
+    ])
+  ) {
+    triggers.push("pressure_buildup");
+  }
+
+  return uniqueStrings(triggers);
 }
 
 function derivePatternDataForSession(session = {}) {
@@ -561,10 +738,16 @@ function derivePatternDataForSession(session = {}) {
     ...deriveContextMarkersFromTexts(texts),
   ]);
 
+  const triggerMarkers = uniqueStrings([
+    ...(Array.isArray(session.triggerMarkers) ? session.triggerMarkers : []),
+    ...deriveTriggerMarkersFromTexts(texts),
+  ]);
+
   return {
     texts,
     patternMarkers,
     contextMarkers,
+    triggerMarkers,
   };
 }
 
@@ -575,6 +758,7 @@ function buildPatternSummary(sessions = []) {
   const typeCounts = new Map();
   const patternMarkerCounts = new Map();
   const contextCounts = new Map();
+  const triggerCounts = new Map();
 
   for (const session of sessions) {
     const type = cleanText(session.type || "unknown");
@@ -585,7 +769,8 @@ function buildPatternSummary(sessions = []) {
       incrementCount(titleCounts, title);
     }
 
-    const { texts, patternMarkers, contextMarkers } = derivePatternDataForSession(session);
+    const { texts, patternMarkers, contextMarkers, triggerMarkers } =
+      derivePatternDataForSession(session);
 
     if (type === "clarity_session") {
       const mindStory = normalizeMindStory(session?.output?.mindStory);
@@ -600,6 +785,10 @@ function buildPatternSummary(sessions = []) {
 
     for (const context of contextMarkers) {
       incrementCount(contextCounts, context);
+    }
+
+    for (const trigger of triggerMarkers) {
+      incrementCount(triggerCounts, trigger);
     }
 
     const uniqueKeywords = new Set(
@@ -617,6 +806,7 @@ function buildPatternSummary(sessions = []) {
     topMindStories: topEntries(mindStoryCounts, 5),
     topPatternMarkers: topEntries(patternMarkerCounts, 5, PATTERN_LABELS),
     topContexts: topEntries(contextCounts, 5, CONTEXT_LABELS),
+    topTriggerMarkers: topEntries(triggerCounts, 5, TRIGGER_LABELS),
     topKeywords: topEntries(keywordCounts, 6),
     topTitles: topEntries(titleCounts, 5),
   };
@@ -639,6 +829,10 @@ function buildPatternsReadingPrompt(patterns, sessions) {
     .map((item) => `- ${item.label || item.value} (${item.count})`)
     .join("\n");
 
+  const topTriggers = (patterns.topTriggerMarkers || [])
+    .map((item) => `- ${item.label || item.value} (${item.count})`)
+    .join("\n");
+
   const recentSessions = sessions.slice(0, 8).map((session, index) => {
     const title = cleanText(session.title) || "Untitled";
     const summary = cleanText(session.summary);
@@ -649,6 +843,9 @@ function buildPatternsReadingPrompt(patterns, sessions) {
     const contexts = Array.isArray(session.contextMarkers)
       ? session.contextMarkers.join(", ")
       : "";
+    const triggers = Array.isArray(session.triggerMarkers)
+      ? session.triggerMarkers.join(", ")
+      : "";
 
     return [
       `SESSION ${index + 1}`,
@@ -658,6 +855,7 @@ function buildPatternsReadingPrompt(patterns, sessions) {
       mindStory ? `Mind Story: ${mindStory}` : "",
       markers ? `Pattern Markers: ${markers}` : "",
       contexts ? `Context Markers: ${contexts}` : "",
+      triggers ? `Trigger Markers: ${triggers}` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -680,10 +878,11 @@ Voice rules:
 - if there are 6+ sessions, you may sound more confident
 
 Reasoning rules:
-- separate what is clearly repeated from what is only a likely link
-- use the repeated story, repeated pattern markers, repeated contexts, and recent sessions together
+- separate surface context from deeper pattern and trigger style
+- use the repeated story, repeated pattern markers, repeated contexts, repeated trigger markers, and recent sessions together
 - say what the mind seems to keep doing
 - say what kind of situation seems to trigger it most
+- say whether the trigger seems body-first, uncertainty-based, feedback-based, or spiral-based if supported
 - say where the pattern may be linking into identity, safety, pressure, or control if the data supports that
 - do not invent trauma, history, or hidden causes
 - do not diagnose
@@ -733,6 +932,9 @@ ${topMarkers || "- none"}
 
 TOP CONTEXTS
 ${topContexts || "- none"}
+
+TOP TRIGGER MARKERS
+${topTriggers || "- none"}
 
 RECENT SESSIONS
 ${recentSessions.join("\n\n") || "none"}`;
@@ -1146,6 +1348,7 @@ app.post("/sessions/save", async (req, res) => {
       tags: [],
       patternMarkers: derivePatternMarkersFromTexts(patternTexts),
       contextMarkers: deriveContextMarkersFromTexts(patternTexts),
+      triggerMarkers: deriveTriggerMarkersFromTexts(patternTexts),
       metadata: {
         source: "clarity_session",
         appVersion: "v2",
@@ -1244,6 +1447,7 @@ app.post("/talk/save-insight", async (req, res) => {
       tags: [],
       patternMarkers: derivePatternMarkersFromTexts(patternTexts),
       contextMarkers: deriveContextMarkersFromTexts(patternTexts),
+      triggerMarkers: deriveTriggerMarkersFromTexts(patternTexts),
       metadata: {
         source: "talk_it_through",
         appVersion: "v2",
@@ -1456,7 +1660,7 @@ app.post("/patterns/read", async (req, res) => {
       debug: {
         model: "gpt-5.2",
         session_count: sessions.length,
-        commit_hint: "RETURN_PATTERNS_READER_V2_REFINED_TONE",
+        commit_hint: "RETURN_PATTERNS_READER_V3_DEEPER_MARKERS",
       },
     });
   } catch (error) {
@@ -1472,9 +1676,10 @@ app.post("/patterns/read/save", async (req, res) => {
     const db = getDb();
     const userId = cleanText(req.body?.userId);
     const reading = cleanText(req.body?.reading);
-    const patterns = req.body?.patterns && typeof req.body.patterns === "object"
-      ? req.body.patterns
-      : null;
+    const patterns =
+      req.body?.patterns && typeof req.body.patterns === "object"
+        ? req.body.patterns
+        : null;
 
     if (!userId) {
       return res.status(400).json({ error: "userId is required." });
