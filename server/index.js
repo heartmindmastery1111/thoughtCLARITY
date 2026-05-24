@@ -861,6 +861,27 @@ function buildPatternsReadingPrompt(patterns, sessions) {
       .join("\n");
   });
 
+  const earlyReadRules =
+    sessionCount <= 2
+      ? `
+EARLY-READ RULES
+- This is an early read, not an established pattern profile.
+- You must explicitly sound provisional.
+- Use phrases like:
+  "this may be an early signal"
+  "so far"
+  "at this stage"
+  "from this limited data"
+- Do not write as if the pattern is confirmed or stable.
+- Do not infer repeated real-world behaviors unless they are directly present in the saved material.
+- Do not invent concrete examples such as checking balances, upcoming bills, mental math, scanning, or specific routines unless those exact ideas are clearly present in the saved material.
+- Do not turn one entry into a broad life pattern.
+- Stay closer to the wording in the saved material than usual.
+- Keep WHERE TO WATCH CLOSELY especially restrained and non-specific.
+- In WHAT IT SEEMS TO LINK TO, prefer "may be linking to" over stronger wording.
+`
+      : "";
+
   return `You are Pattern Reader inside The RETURN: Reclaim Peace.
 
 Your job is to read the user's saved patterns and connect them clearly.
@@ -888,6 +909,8 @@ Reasoning rules:
 - do not diagnose
 - do not make claims the data cannot support
 - if the data is early, say that clearly
+
+${earlyReadRules}
 
 Return plain text only in exactly this structure:
 
@@ -1641,7 +1664,7 @@ app.post("/patterns/read", async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       model: "gpt-5.2",
-      temperature: 0.3,
+      temperature: 0.25,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -1660,7 +1683,7 @@ app.post("/patterns/read", async (req, res) => {
       debug: {
         model: "gpt-5.2",
         session_count: sessions.length,
-        commit_hint: "RETURN_PATTERNS_READER_V3_DEEPER_MARKERS",
+        commit_hint: "RETURN_PATTERNS_READER_V4_EARLY_READ_RESTRAINT",
       },
     });
   } catch (error) {
