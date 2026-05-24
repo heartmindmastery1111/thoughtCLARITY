@@ -541,8 +541,8 @@ function derivePatternDataForSession(session = {}) {
     const messages = Array.isArray(session.messages)
       ? session.messages
       : Array.isArray(session.fullThread)
-      ? session.fullThread
-      : [];
+        ? session.fullThread
+        : [];
 
     for (const message of messages) {
       if (message?.role === "user" || message?.role === "assistant") {
@@ -736,6 +736,44 @@ ${topContexts || "- none"}
 
 RECENT SESSIONS
 ${recentSessions.join("\n\n") || "none"}`;
+}
+
+function extractReadingHeadline(reading) {
+  const text = cleanText(reading);
+  if (!text) return "Patterns Read";
+
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  let seenHeadline = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line === "HEADLINE") {
+      seenHeadline = true;
+      continue;
+    }
+    if (seenHeadline) {
+      return line.length > 80 ? `${line.slice(0, 77)}...` : line;
+    }
+  }
+
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+function buildPatternsReadingSummary(reading) {
+  const text = cleanText(reading);
+  if (!text) return "Saved patterns read.";
+
+  const stripped = text
+    .replace(/\bHEADLINE\b/gi, "")
+    .replace(/\bWHAT KEEPS REPEATING\b/gi, "")
+    .replace(/\bWHAT IT SEEMS TO LINK TO\b/gi, "")
+    .replace(/\bWHERE TO WATCH CLOSELY\b/gi, "")
+    .replace(/\bONE CLEAN INSIGHT\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return stripped.length > 180 ? `${stripped.slice(0, 177)}...` : stripped;
 }
 
 // --------------------
@@ -1425,6 +1463,132 @@ app.post("/patterns/read", async (req, res) => {
     console.error("POST /patterns/read error:", error);
     return res.status(500).json({
       error: error.message || "Failed to read patterns.",
+    });
+  }
+});
+
+app.post("/patterns/read/save", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.body?.userId);
+    const reading = cleanText(req.body?.reading);
+    const patterns = req.body?.patterns && typeof req.body.patterns === "object"
+      ? req.body.patterns
+      : null;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (!reading) {
+      return res.status(400).json({ error: "reading is required." });
+    }
+
+    if (!patterns) {
+      return res.status(400).json({ error: "patterns snapshot is required." });
+    }
+
+    const id = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    const savedReading = {
+      id,
+      userId,
+      type: "patterns_reading",
+      title: extractReadingHeadline(reading),
+      summary: buildPatternsReadingSummary(reading),
+      reading,
+      patternsSnapshot: patterns,
+      tags: [],
+      metadata: {
+        source: "patterns_reading",
+        appVersion: "v2",
+      },
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    };
+
+    await db.collection("pattern_readings").doc(id).set(savedReading);
+
+    return res.status(201).json({
+      ok: true,
+      savedReading,
+    });
+  } catch (error) {
+    console.error("POST /patterns/read/save error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to save patterns reading.",
+    });
+  }
+});
+
+app.get("/patterns/readings", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.query.userId);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    const snapshot = await db
+      .collection("pattern_readings")
+      .where("userId", "==", userId)
+      .get();
+
+    const readings = snapshot.docs
+      .map((doc) => doc.data())
+      .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+    return res.json({
+      ok: true,
+      readings,
+    });
+  } catch (error) {
+    console.error("GET /patterns/readings error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch patterns reading history.",
+    });
+  }
+});
+
+app.get("/patterns/readings/:id", async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = cleanText(req.query.userId);
+    const readingId = cleanText(req.params.id);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (!readingId) {
+      return res.status(400).json({ error: "reading id is required." });
+    }
+
+    const doc = await db.collection("pattern_readings").doc(readingId).get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Patterns reading not found." });
+    }
+
+    const savedReading = doc.data();
+
+    if (savedReading.userId !== userId) {
+      return res.status(403).json({ error: "Not allowed to access this patterns reading." });
+    }
+
+    return res.json({
+      ok: true,
+      savedReading,
+    });
+  } catch (error) {
+    console.error("GET /patterns/readings/:id error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch patterns reading.",
     });
   }
 });
